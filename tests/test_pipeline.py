@@ -109,10 +109,15 @@ class Recipes(unittest.TestCase):
         _, r2 = self.build(products=[{"name": "Senza dati"}])
         self.assertIsNone(r2["recipes"][0]["products"][0]["quantity"])
 
-    def test_efficacy_is_never_claimed(self):
+    def test_efficacy_is_simulated_and_declared(self):
         _, r = self.build()
         for rec in r["recipes"]:
-            self.assertFalse(rec["efficacy"]["estimated"])
+            e = rec["efficacy"]
+            self.assertTrue(e["simulated"])
+            self.assertTrue(0 < e["value"] <= 97)
+            self.assertIn("DEMO", e["model"])
+        _, r = self.build(products=[])
+        self.assertIsNone(r["recipes"][0]["efficacy"]["value"])
 
     def test_square_root_formula_is_the_documented_one(self):
         _, r = self.build()
@@ -233,7 +238,7 @@ class GeoJson(unittest.TestCase):
         cls = sorted(out["origin"]["class_table"], key=lambda c: c["index_mean"])
         self.assertGreater(cls[0]["rate"], cls[-1]["rate"])
         with self.assertRaises(service.ServiceError):
-            service.geojson_inspect(ndvi_geojson(crs="urn:ogc:def:crs:EPSG::32632"))
+            service.geojson_inspect(ndvi_geojson(crs="urn:ogc:def:crs:EPSG::3003"))      # Monte Mario: non supportato
         with self.assertRaises(service.ServiceError):
             service.geojson_inspect(ndvi_geojson(scale=50000))       # coordinate proiettate
         with self.assertRaises(service.ServiceError):
@@ -282,7 +287,8 @@ class PipelineHttp(ServerCase):
         st, _, body = c.post_json("/api/match", {**base, "recipe_id": "inesistente"})
         self.assertEqual(st, 400)
         st, _, body = c.req("GET", "/api/satellite")
-        self.assertFalse(json.loads(body)["configured"])
+        sat = json.loads(body)
+        self.assertTrue(sat["configured"] and sat["demo"])
 
     def test_geojson_upload(self):
         c = self.client()
@@ -298,3 +304,137 @@ class PipelineHttp(ServerCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------------------- modalità dimostrativa
+
+import struct as _struct
+
+
+def _shapefile_zip(utm=False):
+    """Shapefile minimo con 4 quadrati e attributo NDVI (coordinate WGS84 o UTM 32N)."""
+    from um.shapefile import utm_to_lonlat  # noqa: F401  (solo per coerenza dei dati)
+    polys = []
+    for i in range(4):
+        if utm:
+            x0, y0, d = 520000 + i * 40, 4983000, 40
+        else:
+            x0, y0, d = 9.25 + i * 0.0005, 45.0, 0.0005
+        ring = [(x0, y0), (x0, y0 + d), (x0 + d, y0 + d), (x0 + d, y0), (x0, y0)]      # orario: anello esterno
+        polys.append(ring)
+    recs = b""
+    for n, ring in enumerate(polys, 1):
+        content = _struct.pack("<i4d2i", 5, 0, 0, 0, 0, 1, len(ring)) + _struct.pack("<i", 0) + b"".join(_struct.pack("<2d", *p) for p in ring)
+        recs += _struct.pack(">2i", n, len(content) // 2) + content
+    hdr = _struct.pack(">7i", 9994, 0, 0, 0, 0, 0, (100 + len(recs)) // 2) + _struct.pack("<2i4d4d", 1000, 5, 0, 0, 0, 0, 0, 0, 0, 0)
+    fields = [(b"NDVI", b"N", 8, 3)]
+    dbf_hdr_len = 32 + 32 * len(fields) + 1
+    rec_len = 1 + sum(f[2] for f in fields)
+    dbf = _struct.pack("<4BIHH20x", 3, 126, 1, 1, len(polys), dbf_hdr_len, rec_len)
+    for name, t, ln, dec in fields:
+        dbf += name.ljust(11, b"\x00") + t + b"\x00" * 4 + bytes([ln, dec]) + b"\x00" * 14
+    dbf += b"\x0d"
+    for k in range(len(polys)):
+        dbf += b" " + f"{0.3 + 0.15 * k:8.3f}".encode()
+    prj = ('PROJCS["WGS_1984_UTM_Zone_32N",GEOGCS["GCS_WGS_1984"]]' if utm else 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984"]]').encode()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("campo.shp", hdr + recs)
+        zf.writestr("campo.dbf", dbf)
+        zf.writestr("campo.prj", prj)
+    return buf.getvalue()
+
+
+class DemoMode(unittest.TestCase):
+    def test_fields_and_simulated_catalogue(self):
+        fields = service.demo_fields()["fields"]
+        self.assertEqual(len(fields), 4)
+        for f in fields:
+            self.assertTrue(f["demo"])
+        scenes = service.demo_search("frumento_podere")["scenes"]
+        self.assertTrue(any(not s["usable"] for s in scenes))
+        self.assertTrue(all(s["date"] for s in scenes))
+
+    def test_every_demo_field_runs_the_whole_pipeline(self):
+        db = {p["name"]: {**p, "source": "DEMO"} for p in json.load(open("static/data/demo_etichette.json", encoding="utf-8"))["products"]}
+        prod = {"vigneto_colle": "Peronex Duo SC", "mais_cascina": "Erbidemo Mais OD", "frumento_podere": "Triazodemo 250 EC", "pomodoro_nord": "Mandidemo 250 SC"}
+        for f in service.demo_fields()["fields"]:
+            s = service.Session(sid="d")
+            out = service.demo_load(s, {"field": f["id"], "acquisition": f["acquisitions"][0]["id"], "classes": 3,
+                                        "vol_low": f["suggest"]["vol"][0], "vol_high": f["suggest"]["vol"][1]})
+            self.assertEqual(out["origin"]["kind"], "demo")
+            self.assertEqual(out["summary"]["tasks"][0]["kind"], "grid1")
+            cfg = out["example"]["suggested_config"]
+            body = {"task": 0, "products": [db[prod[f["id"]]]], "options": {}, "config": cfg}
+            r = service.recipes_payload(s, body)
+            a, b, c = r["recipes"]
+            self.assertGreater(a["efficacy"]["value"], c["efficacy"]["value"], f["id"])      # seguire la mappa rende di più
+            self.assertLessEqual(sum(p["quantity"] for p in b["products"]), sum(p["quantity"] for p in a["products"]) + 1e-6)
+            m = service.match_payload(s, {**body, "recipe_id": "aderente"})
+            self.assertIn(m["level"], ("adeguata", "parziale"))
+            d = service.dossier_payload(s, {**body, "recipe_id": "aderente"})
+            self.assertIn("mappa e campo simulati", d["demo"])
+
+    def test_weed_map_spot_spraying(self):
+        s = service.Session(sid="w")
+        out = service.demo_load(s, {"field": "mais_cascina", "acquisition": "drone-0605", "index": "WEED", "exclude_below": 3,
+                                    "classes": 3, "vol_low": 160, "vol_high": 260})
+        zero = [c for c in out["summary"]["tasks"][0]["classes"] if c["rate"] == 0]
+        self.assertTrue(zero and zero[0]["area_ha"] > 1)
+
+    def test_cloudy_scene_refused(self):
+        bad = next(sc for sc in service.demo_search("frumento_podere")["scenes"] if not sc["usable"])
+        with self.assertRaises(service.ServiceError):
+            service.demo_load(service.Session(sid="c"), {"field": "frumento_podere", "acquisition": bad["id"], "classes": 3, "vol_low": 150, "vol_high": 250})
+
+    def test_sections_sensors_and_arag_extras(self):
+        s = service.Session(sid="x")
+        out = service.demo_load(s, {"field": "mais_cascina", "acquisition": "drone-0605", "classes": 3, "vol_low": 160, "vol_high": 260})
+        cfg = out["example"]["suggested_config"]
+        body = {"task": 0, "products": [product(dose_min=0.75, dose_max=1.5)], "options": {}, "recipe_id": "aderente", "config": cfg}
+        m = service.match_payload(s, body)
+        rows = {r["id"]: r for r in m["rows"]}
+        self.assertEqual(rows["sections"]["status"], "partial")          # 3 sezioni per zone da 6 m su 24 m
+        self.assertTrue(rows["sensors"]["advisory"])
+        rec = service.recommend_payload(s, body)
+        codes = [it["product"]["code"] for r in rec["recommendations"] for it in r["items"]]
+        self.assertTrue(any(c.startswith("DEMO-SV") for c in codes))
+        fixed = next(r for r in rec["recommendations"] if any(it["product"]["code"].startswith("DEMO-SV") for it in r["items"]))
+        again = service.match_payload(s, {**body, "config": {**cfg, **fixed["changes"]}})
+        self.assertEqual({r["id"]: r for r in again["rows"]}["sections"]["status"], "ok")
+
+    def test_label_db_mix_incompatibility(self):
+        db = {p["name"]: {**p, "source": "DEMO"} for p in json.load(open("static/data/demo_etichette.json", encoding="utf-8"))["products"]}
+        s = session()
+        r = service.recipes_payload(s, {"task": 0, "products": [db["Cuprodemo 20 WG"], db["Fosemdemo 80 WG"]], "options": {}, "config": FULL})
+        self.assertTrue(any("non ammessa" in c["text"] and c["level"] == "fail" for c in r["recipes"][0]["constraints"]))
+
+    def test_shapefile_and_utm(self):
+        from um.shapefile import utm_to_lonlat
+        lon, lat = utm_to_lonlat(500000, 4982950.4, 32)
+        self.assertAlmostEqual(lon, 9.0, places=5)
+        self.assertAlmostEqual(lat, 45.0, places=4)
+        for utm in (False, True):
+            info = service.geojson_inspect(_shapefile_zip(utm))
+            self.assertEqual(info["features"], 4)
+            out = service.geojson_load(service.Session(sid="s"), _shapefile_zip(utm), "campo.zip",
+                                       {"property": "NDVI", "classes": 2, "vol_low": 150, "vol_high": 250})
+            self.assertEqual(len(out["summary"]["tasks"][0]["classes"]), 2)
+        utm_gj = json.dumps({"type": "FeatureCollection", "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:EPSG::32632"}},
+                             "features": [{"type": "Feature", "properties": {"v": k}, "geometry": {"type": "Polygon", "coordinates": [[[520000 + 50 * k, 4983000], [520050 + 50 * k, 4983000], [520050 + 50 * k, 4983050], [520000 + 50 * k, 4983050], [520000 + 50 * k, 4983000]]]}} for k in range(3)]}).encode()
+        self.assertEqual(service.geojson_inspect(utm_gj)["features"], 3)
+
+
+class DemoHttp(ServerCase):
+    def test_demo_endpoints_and_shapefile_upload(self):
+        c = self.client()
+        st, _, body = c.req("GET", "/api/demo/fields")
+        self.assertEqual(st, 200)
+        st, _, body = c.req("GET", "/api/satellite/search?field=vigneto_colle")
+        self.assertEqual(st, 200)
+        st, _, body = c.post_json("/api/demo/load", {"field": "vigneto_colle", "acquisition": "drone-0618", "classes": 3, "vol_low": 250, "vol_high": 375})
+        self.assertEqual(st, 200, body)
+        self.assertTrue(json.loads(body)["origin"]["demo"])
+        st, _, body = c.req("POST", "/api/import", _shapefile_zip(), {"Content-Type": "application/octet-stream", "X-Filename": "campo.zip"})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(json.loads(body)["vector"]["features"], 4)

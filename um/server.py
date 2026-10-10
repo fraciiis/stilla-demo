@@ -16,7 +16,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Optional
 
-from . import __version__, isoxml, netinfo, service
+from . import __version__, geoimport, isoxml, netinfo, service
 from .service import ServiceError, SessionStore
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +31,7 @@ PIPELINE = {
     "/api/recommend": service.recommend_payload,
     "/api/dossier": service.dossier_payload,
     "/api/dossier/file": None,
+    "/api/demo/load": service.demo_load,
 }
 COOKIE = "um_sid"
 
@@ -163,6 +164,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"loaded": True, "filename": sess.filename, **service.import_payload(sess.rx, sess.origin)})
             if path == "/api/satellite":
                 return self._json(service.satellite_status())
+            if path == "/api/demo/fields":
+                return self._json(service.demo_fields())
+            if path == "/api/satellite/search":
+                q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                return self._json(service.demo_search((q.get("field") or [""])[0]))
             if path.startswith("/api/"):
                 return self._fail(404, "Percorso non trovato.")
             return self._static(path)
@@ -246,6 +252,8 @@ class Handler(BaseHTTPRequestHandler):
         name = os.path.basename(name.replace("\\", "/")) or "TASKDATA.zip"
         if len(raw) > isoxml.MAX_UPLOAD_BYTES:
             return self._fail(413, f"File troppo grande (massimo {isoxml.MAX_UPLOAD_BYTES // (1024 * 1024)} MB).")
+        if geoimport.shapefile.is_shapefile_zip(raw):           # shapefile zippato: serve la scelta di indice e volumi
+            return self._json({"ok": True, "vector": service.geojson_inspect(raw), "filename": name})
         with sess.lock:
             self._json(service.load_into(sess, raw, name))
 

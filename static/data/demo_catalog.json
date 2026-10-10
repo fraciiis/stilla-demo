@@ -1,0 +1,27 @@
+{
+  "notice": "Estensione DIMOSTRATIVA del catalogo: sensori e gruppi di valvole di sezione con codici fittizi (DEMO-…) e caratteristiche verosimili. Non sono prodotti reali del listino ARAG.",
+  "products": [
+    {"category": "sensor", "code": "DEMO-PS20", "name": "Sensore di pressione 0–20 bar", "short": "Trasduttore di pressione di barra (componente dimostrativo)",
+     "specs": "Uscita 4–20 mA, precisione ±0,5 % fondo scala, raccordo 1/4\" (dati DEMO).", "official_url": "", "demo": true,
+     "capabilities": {"measures": "pressure"}},
+    {"category": "sensor", "code": "DEMO-RS01", "name": "Sensore di velocità radar", "short": "Velocità di avanzamento indipendente dallo slittamento (dimostrativo)",
+     "specs": "0,5–40 km/h, aggiornamento 10 Hz (dati DEMO).", "official_url": "", "demo": true, "capabilities": {"measures": "speed"}},
+    {"category": "sensor", "code": "DEMO-LV01", "name": "Sensore di livello serbatoio", "short": "Livello continuo del serbatoio principale (dimostrativo)",
+     "specs": "Ultrasuoni, risoluzione 5 L, registra i litri caricati per la tracciabilità (dati DEMO).", "official_url": "", "demo": true,
+     "capabilities": {"measures": "level"}},
+    {"category": "sensor", "code": "DEMO-WS01", "name": "Anemometro di bordo", "short": "Vento e direzione durante il trattamento (dimostrativo)",
+     "specs": "0–30 m/s, registrazione nel file di lavoro (dati DEMO).", "official_url": "", "demo": true, "capabilities": {"measures": "wind"}},
+    {"category": "section_valves", "code": "DEMO-SV05", "name": "Gruppo valvole di sezione · 5 sezioni", "short": "Chiusura automatica per sezioni (dimostrativo)",
+     "specs": "5 valvole elettriche, comando ISOBUS, chiusura in 0,6 s (dati DEMO).", "official_url": "", "demo": true, "capabilities": {"sections": 5}},
+    {"category": "section_valves", "code": "DEMO-SV07", "name": "Gruppo valvole di sezione · 7 sezioni", "short": "Chiusura automatica per sezioni (dimostrativo)",
+     "specs": "7 valvole elettriche, comando ISOBUS, chiusura in 0,6 s (dati DEMO).", "official_url": "", "demo": true, "capabilities": {"sections": 7}},
+    {"category": "section_valves", "code": "DEMO-SV09", "name": "Gruppo valvole di sezione · 9 sezioni", "short": "Chiusura automatica per sezioni (dimostrativo)",
+     "specs": "9 valvole elettriche, comando ISOBUS, chiusura in 0,5 s (dati DEMO).", "official_url": "", "demo": true, "capabilities": {"sections": 9}},
+    {"category": "section_valves", "code": "DEMO-SV13", "name": "Gruppo valvole di sezione · 13 sezioni", "short": "Chiusura automatica per sezioni (dimostrativo)",
+     "specs": "13 valvole elettriche, comando ISOBUS, chiusura in 0,5 s (dati DEMO).", "official_url": "", "demo": true, "capabilities": {"sections": 13}}
+  ],
+  "capability_overrides": {
+    "4675204": {"sections": 13},
+    "4675202": {"sections": 13}
+  }
+}

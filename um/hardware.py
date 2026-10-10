@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 CATALOG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "data", "arag_catalog.json")
+# estensione DIMOSTRATIVA (sensori, valvole di sezione, sezioni dei terminali): codici fittizi, marcati demo
+DEMO_CATALOG_PATH = os.path.join(os.path.dirname(CATALOG_PATH), "demo_catalog.json")
 
 _lock = threading.Lock()
 _catalog_cache: Optional["Catalog"] = None
@@ -59,12 +61,39 @@ class Catalog:
         return out
 
 
+def merge_demo(data: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    """Aggiunge i prodotti dimostrativi e le capacità dimostrative, senza toccare i dati reali del catalogo."""
+    out = dict(data)
+    prods = [dict(p) for p in data.get("products", [])]
+    by_code = {str(p["code"]): p for p in prods}
+    for code, caps in (extra.get("capability_overrides") or {}).items():
+        if code in by_code:
+            c = dict(by_code[code].get("capabilities") or {})
+            for k, v in caps.items():
+                if c.get(k) in (None, ""):
+                    c[k] = v
+                    c.setdefault("demo_caps", []).append(k)
+            by_code[code]["capabilities"] = c
+    for p in extra.get("products", []):
+        if str(p.get("code")) not in by_code:
+            prods.append({**p, "demo": True})
+    out["products"] = prods
+    return out
+
+
 def load_catalog(force: bool = False) -> Catalog:
     global _catalog_cache
     with _lock:
         if _catalog_cache is None or force:
             with open(CATALOG_PATH, "r", encoding="utf-8") as fh:
-                _catalog_cache = Catalog(json.load(fh))
+                data = json.load(fh)
+            try:
+                with open(DEMO_CATALOG_PATH, "r", encoding="utf-8") as fh:
+                    extra = json.load(fh)
+            except (OSError, ValueError):
+                extra = {}
+            data = merge_demo(data, extra)
+            _catalog_cache = Catalog(data)
         return _catalog_cache
 
 
@@ -173,6 +202,8 @@ class HwConfig:
     allow_speed_adapt: bool = True
     strategy: str = "auto"               # auto | variable | uniform
     uniform_rate: Optional[float] = None
+    boom_sections: Optional[int] = None  # sezioni già presenti sulla macchina (dato dell'operatore)
+    extras: list[str] = field(default_factory=list)   # componenti aggiuntivi: sensori, valvole di sezione…
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "HwConfig":
@@ -194,6 +225,8 @@ class HwConfig:
             spray_height=num(d.get("spray_height"), 0.5) or 0.5,
             allow_speed_adapt=bool(d.get("allow_speed_adapt", True)),
             strategy=str(d.get("strategy", "auto") or "auto"), uniform_rate=num(d.get("uniform_rate")),
+            boom_sections=int(num(d.get("boom_sections"))) if num(d.get("boom_sections")) else None,
+            extras=[str(c) for c in (d.get("extras") or []) if str(c).strip()][:20],
         )
         return cfg
 

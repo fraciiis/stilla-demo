@@ -1,0 +1,197 @@
+{
+ "notice": "Banca dati etichette DIMOSTRATIVA: prodotti, numeri di registrazione, dosi, prezzi ed efficacia sono inventati (verosimili). Non usarli in campo.",
+ "source": "Banca dati etichette dimostrativa (DEMO) · aggiornata al 2026-09-30",
+ "products": [
+  {
+   "name": "Cuprodemo 20 WG",
+   "reg_no": "DEMO-10021",
+   "active": "rame metallo (da idrossido) 20 %",
+   "formulation": "granuli idrodisperdibili",
+   "crops": [
+    "vite",
+    "pomodoro"
+   ],
+   "targets": [
+    "peronospora"
+   ],
+   "unit": "kg/ha",
+   "dose_min": 1.5,
+   "dose_max": 3.0,
+   "vol_min": 200,
+   "vol_max": 1000,
+   "phi_days": "21",
+   "max_treatments": "6",
+   "price": 9.8,
+   "efficacy": 0.82,
+   "incompatible_with": [
+    "Fosemdemo 80 WG"
+   ],
+   "notes": "Non miscelare con prodotti a reazione acida. Fascia di rispetto 10 m dai corpi idrici."
+  },
+  {
+   "name": "Peronex Duo SC",
+   "reg_no": "DEMO-10388",
+   "active": "cimoxanil 120 g/L + zoxamide 180 g/L",
+   "formulation": "sospensione concentrata",
+   "crops": [
+    "vite"
+   ],
+   "targets": [
+    "peronospora"
+   ],
+   "unit": "L/ha",
+   "dose_min": 0.35,
+   "dose_max": 0.6,
+   "vol_min": 200,
+   "vol_max": 1000,
+   "phi_days": "28",
+   "max_treatments": "4",
+   "price": 38.5,
+   "efficacy": 0.9,
+   "incompatible_with": [],
+   "notes": "Massimo 4 trattamenti per stagione; ugelli antideriva consigliati."
+  },
+  {
+   "name": "Fosemdemo 80 WG",
+   "reg_no": "DEMO-10450",
+   "active": "fosetil-alluminio 80 %",
+   "formulation": "granuli idrodisperdibili",
+   "crops": [
+    "vite"
+   ],
+   "targets": [
+    "peronospora"
+   ],
+   "unit": "kg/ha",
+   "dose_min": 2.0,
+   "dose_max": 3.0,
+   "vol_min": 300,
+   "vol_max": 1000,
+   "phi_days": "28",
+   "max_treatments": "4",
+   "price": 14.2,
+   "efficacy": 0.86,
+   "incompatible_with": [
+    "Cuprodemo 20 WG"
+   ],
+   "notes": "Sistemico: azione preventiva e curativa nelle prime 48 ore."
+  },
+  {
+   "name": "Mandidemo 250 SC",
+   "reg_no": "DEMO-11207",
+   "active": "mandipropamid 250 g/L",
+   "formulation": "sospensione concentrata",
+   "crops": [
+    "pomodoro"
+   ],
+   "targets": [
+    "peronospora"
+   ],
+   "unit": "L/ha",
+   "dose_min": 0.4,
+   "dose_max": 0.6,
+   "vol_min": 300,
+   "vol_max": 1000,
+   "phi_days": "3",
+   "max_treatments": "4",
+   "price": 52.0,
+   "efficacy": 0.91,
+   "incompatible_with": [],
+   "notes": "Applicare preventivamente; alternare con prodotti a diverso meccanismo d'azione."
+  },
+  {
+   "name": "Erbidemo Mais OD",
+   "reg_no": "DEMO-12014",
+   "active": "nicosulfuron 40 g/L",
+   "formulation": "dispersione oleosa",
+   "crops": [
+    "mais"
+   ],
+   "targets": [
+    "infestanti"
+   ],
+   "unit": "L/ha",
+   "dose_min": 0.75,
+   "dose_max": 1.5,
+   "vol_min": 150,
+   "vol_max": 400,
+   "phi_days": "—",
+   "max_treatments": "1",
+   "price": 21.0,
+   "efficacy": 0.88,
+   "incompatible_with": [],
+   "notes": "Post-emergenza, mais da 2 a 8 foglie. Non trattare con vento oltre 3 m/s."
+  },
+  {
+   "name": "Dicadem 480 SL",
+   "reg_no": "DEMO-12160",
+   "active": "dicamba 480 g/L",
+   "formulation": "concentrato solubile",
+   "crops": [
+    "mais"
+   ],
+   "targets": [
+    "infestanti"
+   ],
+   "unit": "L/ha",
+   "dose_min": 0.4,
+   "dose_max": 0.75,
+   "vol_min": 150,
+   "vol_max": 400,
+   "phi_days": "—",
+   "max_treatments": "1",
+   "price": 16.4,
+   "efficacy": 0.85,
+   "incompatible_with": [],
+   "notes": "Dicotiledoni; rischio deriva su colture sensibili confinanti."
+  },
+  {
+   "name": "Triazodemo 250 EC",
+   "reg_no": "DEMO-13033",
+   "active": "tebuconazolo 250 g/L",
+   "formulation": "concentrato emulsionabile",
+   "crops": [
+    "frumento"
+   ],
+   "targets": [
+    "septoria",
+    "ruggini"
+   ],
+   "unit": "L/ha",
+   "dose_min": 0.6,
+   "dose_max": 1.0,
+   "vol_min": 150,
+   "vol_max": 400,
+   "phi_days": "35",
+   "max_treatments": "2",
+   "price": 24.0,
+   "efficacy": 0.84,
+   "incompatible_with": [],
+   "notes": "Dalla levata alla spigatura."
+  },
+  {
+   "name": "Strobidemo Plus SE",
+   "reg_no": "DEMO-13115",
+   "active": "azoxystrobin 200 g/L + ciproconazolo 80 g/L",
+   "formulation": "suspo-emulsione",
+   "crops": [
+    "frumento"
+   ],
+   "targets": [
+    "septoria",
+    "ruggini"
+   ],
+   "unit": "L/ha",
+   "dose_min": 0.6,
+   "dose_max": 1.0,
+   "vol_min": 150,
+   "vol_max": 400,
+   "phi_days": "35",
+   "max_treatments": "2",
+   "price": 34.0,
+   "efficacy": 0.9,
+   "incompatible_with": [],
+   "notes": "Non superare 2 applicazioni di strobilurine per stagione."
+  }
+ ]
+}

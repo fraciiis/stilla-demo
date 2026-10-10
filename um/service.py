@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from . import dossier, geoimport, isoxml, matching, recipes, satellite, zoning
+from . import demo, dossier, geoimport, isoxml, matching, recipes, satellite, zoning
 from .engine import ClassIn, Plan, compare, envelope, evaluate, kpis, specialise, suggest
 from .hardware import Catalog, HwConfig, load_catalog, resolve_chain
 from .isoxml import Rx
@@ -404,7 +404,10 @@ def match_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
     _, rec = _selected(session, body, task)
     rates = recipes.recipe_rates(task, rec)
     out = matching.match(task, cfg, load_catalog(), rates)
-    out.update({"ok": True, "recipe_id": rec["id"], "rates": {str(k): v for k, v in rates.items()}})
+    eff_hw = recipes.efficacy(rec, out.pop("delivered"))
+    out.update({"ok": True, "recipe_id": rec["id"], "rates": {str(k): v for k, v in rates.items()},
+                "efficacy": {"recipe": (rec.get("efficacy") or {}).get("value"), "on_hardware": eff_hw["value"] if eff_hw else None,
+                             "band": recipes.EFF_BAND, "simulated": True}})
     return out
 
 
@@ -414,7 +417,11 @@ def recommend_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
     if cfg is None:
         raise ServiceError("Configura l'hardware.")
     _, rec = _selected(session, body, task)
-    return matching.recommend(task, cfg, load_catalog(), recipes.recipe_rates(task, rec))
+
+    def eff(delivered: dict[int, Any]) -> Optional[float]:
+        e = recipes.efficacy(rec, delivered)
+        return e["value"] if e else None
+    return matching.recommend(task, cfg, load_catalog(), recipes.recipe_rates(task, rec), eff)
 
 
 def dossier_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
@@ -426,9 +433,25 @@ def dossier_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
         rs, rec = _selected(session, body, task)
         if cfg is not None:
             m = matching.match(task, cfg, load_catalog(), recipes.recipe_rates(task, rec))
+            m.pop("delivered", None)
     names = resolve_chain(cfg, load_catalog()).names if cfg is not None else {}
-    return dossier.build(summary=isoxml.public_summary(session.rx), task=task, zoning=z, recipes=rs,
-                         recipe_id=rec["id"] if rec else "", match=m, cfg_names=names, body=body)
+    d = dossier.build(summary=isoxml.public_summary(session.rx), task=task, zoning=z, recipes=rs,
+                      recipe_id=rec["id"] if rec else "", match=m, cfg_names=names, body=body)
+    demo_parts = []
+    if (session.origin or {}).get("demo"):
+        demo_parts.append("mappa e campo simulati")
+    if rec and any(p.get("demo") for p in rec["products"]):
+        demo_parts.append("prodotti della banca dati dimostrativa")
+    if cfg is not None and any((load_catalog().get(c) or {}).get("demo") for c in cfg.extras):
+        demo_parts.append("componenti dimostrativi")
+    if rec and (rec.get("efficacy") or {}).get("estimated"):
+        demo_parts.append("efficacia simulata")
+    d["demo"] = demo_parts
+    if m is not None and rec is not None:
+        eff_hw = recipes.efficacy(rec, matching.match(task, cfg, load_catalog(), recipes.recipe_rates(task, rec))["delivered"])
+        d["efficacy"] = {"recipe": rec["efficacy"].get("value"), "on_hardware": eff_hw["value"] if eff_hw else None,
+                         "band": recipes.EFF_BAND, "model": recipes.EFF_MODEL}
+    return d
 
 
 def dossier_file(session: Session, body: dict[str, Any]) -> tuple[bytes, str, str]:
@@ -441,3 +464,30 @@ def dossier_file(session: Session, body: dict[str, Any]) -> tuple[bytes, str, st
 
 def satellite_status() -> dict[str, Any]:
     return {"ok": True, **satellite.status()}
+
+
+# --------------------------------------------------------------------------- modalità dimostrativa
+
+def demo_fields() -> dict[str, Any]:
+    return {"ok": True, "fields": demo.list_fields(), "notice": "Campi e mappe dimostrativi: dati simulati."}
+
+
+def demo_search(field: str) -> dict[str, Any]:
+    try:
+        return demo.satellite_search(field)
+    except demo.DemoError as exc:
+        raise ServiceError(str(exc))
+
+
+def demo_load(session: Session, body: dict[str, Any]) -> dict[str, Any]:
+    try:
+        data, origin = demo.build_prescription(str(body.get("field", "")), body)
+    except demo.DemoError as exc:
+        raise ServiceError(str(exc))
+    out = load_into(session, data, f"{origin['field']}_{origin['acquisition']['id']}_prescrizione.zip", origin)
+    if origin.get("hw"):
+        # configurazione completa: le posizioni non indicate dal campo vanno svuotate, non ereditate
+        hw = {"terminal": "", "rate_control": "", "ecu": "", "actuator": "", "flowmeter": "", "valve": "", "pump": "",
+              "extras": [], "boom_sections": None, "nozzle_count": None, **origin["hw"]}
+        out["example"] = {"id": origin["field"], "title": origin["name"], "suggested_config": hw}
+    return out

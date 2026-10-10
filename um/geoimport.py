@@ -21,7 +21,10 @@ import io
 import json
 import math
 import zipfile
-from typing import Any
+from struct import error as struct_error
+from typing import Any, Optional
+
+from . import shapefile
 
 M_PER_DEG = 111_320.0
 MAX_FEATURES = 5000
@@ -33,7 +36,7 @@ class GeoImportError(ValueError):
     pass
 
 
-def _polys(geom: dict[str, Any]) -> list[list[list[tuple[float, float]]]]:
+def _polys(geom: dict[str, Any], utm: Optional[tuple[int, bool]] = None) -> list[list[list[tuple[float, float]]]]:
     t = (geom or {}).get("type")
     coords = (geom or {}).get("coordinates")
     if t == "Polygon":
@@ -51,6 +54,8 @@ def _polys(geom: dict[str, Any]) -> list[list[list[tuple[float, float]]]]:
                 if not (isinstance(p, (list, tuple)) and len(p) >= 2):
                     raise GeoImportError("Coordinate non valide nel GeoJSON.")
                 lon, lat = float(p[0]), float(p[1])
+                if utm:
+                    lon, lat = shapefile.utm_to_lonlat(lon, lat, *utm)
                 if not (-180 <= lon <= 180 and -90 <= lat <= 90):
                     raise GeoImportError("Le coordinate non sono in gradi WGS84 (sembrano proiettate, ad es. UTM): esporta il GeoJSON in EPSG:4326.")
                 pts.append((lon, lat))
@@ -64,17 +69,27 @@ def _polys(geom: dict[str, Any]) -> list[list[list[tuple[float, float]]]]:
 
 
 def _load(raw: bytes) -> list[dict[str, Any]]:
-    try:
-        data = json.loads(raw.decode("utf-8-sig"))
-    except (UnicodeDecodeError, ValueError):
-        raise GeoImportError("Il file non è un GeoJSON leggibile.")
+    utm: Optional[tuple[int, bool]] = None
+    if shapefile.is_shapefile_zip(raw):
+        try:
+            data: Any = {"type": "FeatureCollection", "features": shapefile.read_zip(raw)}
+        except (shapefile.ShapefileError, zipfile.BadZipFile, struct_error) as exc:
+            raise GeoImportError(str(exc) or "Shapefile non leggibile.")
+    else:
+        try:
+            data = json.loads(raw.decode("utf-8-sig"))
+        except (UnicodeDecodeError, ValueError):
+            raise GeoImportError("Il file non è un GeoJSON né uno shapefile (.zip) leggibile.")
     if isinstance(data, dict) and data.get("type") == "Feature":
         data = {"type": "FeatureCollection", "features": [data]}
     if not (isinstance(data, dict) and data.get("type") == "FeatureCollection" and isinstance(data.get("features"), list)):
         raise GeoImportError("Serve una FeatureCollection GeoJSON con poligoni.")
     crs = ((data.get("crs") or {}).get("properties") or {}).get("name", "")
-    if crs and not any(s in crs.upper() for s in ("4326", "CRS84")):
-        raise GeoImportError(f"Sistema di riferimento {crs} non supportato: esporta il GeoJSON in WGS84 (EPSG:4326).")
+    if crs:
+        try:
+            utm = shapefile.utm_from_crs(crs)
+        except shapefile.ShapefileError as exc:
+            raise GeoImportError(str(exc))
     feats = data["features"]
     if len(feats) > MAX_FEATURES:
         raise GeoImportError(f"Troppi poligoni ({len(feats)}): il massimo è {MAX_FEATURES}.")
@@ -82,7 +97,7 @@ def _load(raw: bytes) -> list[dict[str, Any]]:
     for f in feats:
         if not isinstance(f, dict):
             continue
-        polys = _polys(f.get("geometry") or {})
+        polys = _polys(f.get("geometry") or {}, utm)
         if polys:
             out.append({"polys": polys, "props": f.get("properties") or {}})
     if not out:

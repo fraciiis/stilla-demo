@@ -173,7 +173,7 @@ th{background:var(--bg2);color:var(--mut)} .num{text-align:right;white-space:now
 .src{display:inline-block;font-size:11px;padding:0 7px;border-radius:99px;background:var(--bg2);color:var(--mut);margin-left:6px;white-space:nowrap}
 .src.mancante{background:var(--er-bg);color:var(--er)} .src.dichiarato{background:var(--brand-50);color:var(--brand-strong)} .src.calcolato{background:var(--ad-bg);color:var(--ad)} .src.acquisito{background:var(--ok-bg);color:var(--ok)}
 .box{border-left:4px solid var(--brand);background:var(--brand-50);padding:8px 14px;margin:10px 0;border-radius:4px}
-.box.warn{border-color:#E0A100;background:var(--ad-bg)} .box.err{border-color:#C82A38;background:var(--er-bg)}
+.box.warn{border-color:#E0A100;background:var(--ad-bg)} .box.demo{border-color:#5B2C8C;background:#F1EAF8;color:#3d1d63} .box.err{border-color:#C82A38;background:var(--er-bg)}
 .chk{white-space:nowrap;font-weight:500} .chk.ok{color:var(--ok)} .chk.warn{color:var(--ad)} .chk.fail{color:var(--er)} .chk.todo{color:var(--mut)}
 img.map{max-width:100%;border:1px solid var(--line);border-radius:8px} ul{margin:4px 0 4px 20px;padding:0} .small{font-size:13px;color:var(--mut)}
 .sign{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:30px} .sign div{border-top:1px solid var(--ink);padding-top:6px;font-size:13px;color:var(--mut)}
@@ -207,6 +207,9 @@ def render_html(d: dict[str, Any]) -> str:
 <title>Scheda di trattamento · {escape(str(ident['task']['value']))}</title><style>{CSS}</style></head><body><main>
 <header><div><h1>Scheda del trattamento</h1><div class="sub">{escape(str(ident['task']['value']))} · {escape(d['mode'])} · generata il {escape(d['generated_at'].replace('T', ' '))}</div></div>
 <span class="st {d['status']}">{escape(d['status_label'])}</span></header>"""]
+    if d.get("demo"):
+        parts.append('<div class="box demo"><b>DOCUMENTO DIMOSTRATIVO</b> Contiene dati simulati (' + escape(", ".join(d["demo"]))
+                     + "): serve a mostrare il funzionamento dell'app, non è utilizzabile per un trattamento reale.</div>")
     if d["missing"]:
         parts.append('<div class="box err"><b>Dati obbligatori mancanti</b><ul>' + "".join(f"<li>{escape(m)}</li>" for m in d["missing"]) + "</ul></div>")
     if d["to_validate"]:
@@ -243,6 +246,10 @@ def render_html(d: dict[str, Any]) -> str:
                                f"<td class='num'>{_f(p['per_tank'], 2)}</td><td class='num'>{_f(p['quantity'], 2)} {escape(p['unit'].split('/')[0])}{_src('calcolato')}</td>"
                                f"<td class='small'>{escape(p['source']) or '—'}{(' · verificata il ' + escape(p['checked_on'])) if p['checked_on'] else ''}</td></tr>" for p in rec["products"])
                      + "</tbody></table>")
+        eff = d.get("efficacy") or {}
+        if eff.get("recipe") is not None:
+            parts.append(f"<p><b>Efficacia attesa (simulata)</b>: {_f(eff['recipe'], 0, ' %')} ± {_f(eff['band'], 0)} sul ricettario, "
+                         f"{_f(eff.get('on_hardware'), 0, ' %')} con l'attrezzatura scelta{_src('calcolato')}<br><span class='small'>{escape(eff.get('model', ''))}</span></p>")
         parts.append(f"<p>Miscela {_f(t['mixture_l'], 0, ' L')} · acqua {_f(t['water_l'], 0, ' L')} · serbatoi {_f(t['tank_loads'], 0)} · costo prodotti {_f(t['cost'], 2, ' €')}{_src('calcolato')}</p>")
         zones = [zz for zz in rec["zones"] if zz["volume"]]
         if len(zones) <= 60:

@@ -89,7 +89,15 @@ def provenance(rx: Any, task: Any, origin: Optional[dict[str, Any]]) -> dict[str
     missing: list[dict[str, str]] = []
     field = next((f for f in rx.fields if f.id == task.field_id), rx.fields[0] if rx.fields else None)
     geo_src = (origin or {}).get("kind") == "geojson"
-    if geo_src:
+    if (origin or {}).get("kind") == "demo":
+        a = origin["acquisition"]
+        src = (f"{a.get('sensor', 'drone')}, GSD {a.get('gsd_cm')} cm/px" if a["type"] == "drone"
+               else f"Sentinel-2 L2A, pixel {a.get('res_m', 10)} m, nuvolosità {a.get('cloud', 0)} %")
+        acquired.append({"what": f"Mappa {origin['index_label']} (DEMO)", "detail": f"{src}, acquisizione del {a['date']} — dati simulati"})
+        acquired.append({"what": "Perimetro del campo", "detail": f"{origin['name']} (DEMO)"})
+        computed.append({"what": "Zone di gestione", "detail": origin["rule"]})
+        computed.append({"what": "Ratei di miscela per zona", "detail": f"{origin['vol_low']:g}–{origin['vol_high']:g} L/ha scelti dal tecnico"})
+    elif geo_src:
         acquired.append({"what": "Mappa indice", "detail": f"GeoJSON «{origin.get('filename', '')}», proprietà «{origin.get('property', '')}», {origin.get('features', 0)} poligoni"})
         computed.append({"what": "Zone omogenee", "detail": f"{origin.get('classes')} classi per quantili di superficie dell'indice"})
         computed.append({"what": "Ratei di miscela per classe", "detail": f"regola lineare dichiarata dall'utente: {origin.get('vol_low')}–{origin.get('vol_high')} L/ha"
@@ -122,7 +130,10 @@ def provenance(rx: Any, task: Any, origin: Optional[dict[str, Any]]) -> dict[str
         missing.append({"what": "Superfici per zona", "detail": "senza geometria le quantità totali non sono calcolabili"})
     computed.append({"what": "Classi di intervento", "detail": "terzili di superficie dei ratei (regola dichiarata, non un modello agronomico)"})
     computed.append({"what": "Variabilità", "detail": "coefficiente di variazione dei ratei pesato sulla superficie"})
-    missing.append({"what": "Pressione delle infestanti / stadio colturale", "detail": "nessun dato rilevato: non sono usati nei calcoli"})
+    if (origin or {}).get("index") == "WEED":
+        missing.append({"what": "Stadio colturale", "detail": "non rilevato: verifica in etichetta la finestra d'impiego"})
+    else:
+        missing.append({"what": "Pressione delle infestanti / stadio colturale", "detail": "nessun dato rilevato: non sono usati nei calcoli"})
     return {"acquired": acquired, "computed": computed, "missing": missing}
 
 

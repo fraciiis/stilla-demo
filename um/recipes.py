@@ -23,8 +23,9 @@ B · Minimo prodotto entro etichetta: concentrazione minima che tiene ogni zona 
 C · Rateo unico: un solo volume (media pesata) e dose al centro della finestra: per macchine senza rateo
     variabile, perde la variabilità.
 
-L'efficacia agronomica non viene stimata: manca un modello validato. Al suo posto sono riportati indicatori
-calcolati (aderenza alla prescrizione, quota di superficie entro le dosi di etichetta, eseguibilità sull'hardware).
+Efficacia attesa: SIMULATA con un modello dimostrativo dichiarato (vedi efficacy()), non validato in campo.
+Combina efficacia di base del prodotto (dalla banca dati DEMO o 0,85), risposta alla dose dentro la finestra di
+etichetta e copertura (volume distribuito rispetto a quello richiesto dalla zona).
 """
 
 from __future__ import annotations
@@ -53,6 +54,53 @@ class RecipeError(ValueError):
     pass
 
 
+EFF_DEFAULT = 0.85
+EFF_BAND = 5.0
+EFF_MODEL = ("Modello DEMO: E = E_base × S × C. Dose necessaria della zona = dose media di etichetta × (rateo della zona / "
+             "rateo medio): la prescrizione esprime quanta vegetazione c'è da coprire. S sale da 0,5 a 1 quando la dose "
+             "distribuita passa dal 60 al 100 % di quella necessaria; C = volume distribuito / volume richiesto (max 1); "
+             "più prodotti: 1 − Π(1 − E). Non validato in campo.")
+
+
+def _smooth(t: float) -> float:
+    t = max(0.0, min(1.0, t))
+    return t * t * (3 - 2 * t)
+
+
+def efficacy(recipe: dict[str, Any], delivered: Optional[dict[int, Optional[float]]] = None) -> Optional[dict[str, Any]]:
+    """Efficacia attesa SIMULATA (DEMO) del ricettario; con `delivered` usa i volumi che l'hardware eroga davvero."""
+    prods = [p for p in recipe["products"] if p.get("concentration") is not None]
+    if not prods:
+        return None
+    tot = acc = 0.0
+    by_cls: dict[str, list[float]] = {}
+    treated = [z for z in recipe["zones"] if z["volume"] and z["rx_rate"]]
+    wsum = sum((z["area_ha"] if z["area_ha"] is not None else 1.0) for z in treated) or 1.0
+    rx_mean = sum(z["rx_rate"] * (z["area_ha"] if z["area_ha"] is not None else 1.0) for z in treated) / wsum if treated else 1.0
+    for z in recipe["zones"]:
+        if not z["volume"]:
+            continue
+        w = z["area_ha"] if z["area_ha"] is not None else 1.0
+        v = z["volume"]
+        if delivered is not None and delivered.get(z["i"]) is not None:
+            v = float(delivered[z["i"]])
+        cover = min(1.0, v / z["rx_rate"]) if z["rx_rate"] else 1.0
+        miss = 1.0
+        for p in prods:
+            d = p["concentration"] * v
+            mid = (p["dose_min"] + p["dose_max"]) / 2.0
+            need = mid * (z["rx_rate"] / rx_mean) if z["rx_rate"] else mid
+            resp = 0.5 + 0.5 * _smooth((d / need - 0.6) / 0.4) if need > 0 else 1.0
+            miss *= 1.0 - (p.get("efficacy_base") or EFF_DEFAULT) * resp * cover
+        e = min(0.97, 1.0 - miss)
+        acc += e * w
+        tot += w
+        by_cls.setdefault(z["cls"], []).append(e)
+    val = acc / tot * 100.0 if tot else None
+    return {"value": round(val, 1) if val is not None else None, "band": EFF_BAND, "simulated": True,
+            "by_class": {k: round(sum(v) / len(v) * 100.0, 1) for k, v in by_cls.items()}, "model": EFF_MODEL}
+
+
 # --------------------------------------------------------------------------- prodotti
 
 def clean_product(d: dict[str, Any]) -> dict[str, Any]:
@@ -68,6 +116,10 @@ def clean_product(d: dict[str, Any]) -> dict[str, Any]:
         "phi_days": str(d.get("phi_days", "") or "").strip()[:20],
         "max_treatments": str(d.get("max_treatments", "") or "").strip()[:20],
         "notes": str(d.get("notes", "") or "").strip()[:500],
+        "efficacy_base": num(d.get("efficacy")),
+        "active": str(d.get("active", "") or "").strip()[:160],
+        "incompatible_with": [str(x)[:120] for x in (d.get("incompatible_with") or []) if str(x).strip()][:10],
+        "demo": str(d.get("reg_no", "")).upper().startswith("DEMO") or bool(d.get("demo")),
     }
     problems = []
     missing = [LABEL_FIELD_NAMES[k] for k in REQUIRED_LABEL if p[k] in (None, "")]
@@ -220,10 +272,16 @@ def build(task: Any, zoning: dict[str, Any], products_in: list[dict[str, Any]], 
                 "within_label_pct": within, "quantity": round(qty, 2) if qty is not None else None,
                 "cost": round(qty * p["price"], 2) if (qty is not None and p["price"] is not None) else None,
                 "price": p["price"], "phi_days": p["phi_days"], "max_treatments": p["max_treatments"],
+                "efficacy_base": p["efficacy_base"], "demo": p["demo"], "active": p["active"],
                 "missing": p["missing"], "problems": p["problems"],
             })
         if len(products) > 1:
-            constraints.append({"level": "warn", "text": "Più prodotti nella stessa miscela: la miscibilità va verificata in etichetta (non è controllata dall'app)."})
+            names = {p["name"].lower() for p in products}
+            clash = [(p["name"], o) for p in products for o in p["incompatible_with"] if o.lower() in names]
+            if clash:
+                constraints.append({"level": "fail", "text": "Miscela non ammessa dall'etichetta: " + "; ".join(f"{a} con {b}" for a, b in clash[:2]) + "."})
+            else:
+                constraints.append({"level": "warn", "text": "Più prodotti nella stessa miscela: verifica la miscibilità in etichetta."})
         if not products:
             constraints.append({"level": "fail", "text": "Nessun prodotto con dati di etichetta: le dosi e le quantità di prodotto non sono calcolabili."})
 
@@ -265,13 +323,17 @@ def build(task: Any, zoning: dict[str, Any], products_in: list[dict[str, Any]], 
                 "distinct_rates": len({round(v, 1) for v in vlist}),
                 "hardware": hw,
             },
-            "efficacy": {"estimated": False,
-                         "text": "Efficacia non stimata: manca un modello agronomico validato. Usa gli indicatori calcolati e il giudizio del tecnico."},
+            "efficacy": None,
             "reliability": ("Calcoli completi sui dati di etichetta inseriti: affidabili quanto la fonte indicata." if complete
                             else "Calcolo incompleto: mancano o non sono coerenti alcuni dati di etichetta."),
             "complete": complete,
             "constraints": constraints,
         })
+
+    for r in recipes:
+        e = efficacy(r)
+        r["efficacy"] = e or {"value": None, "simulated": True, "text": "Serve almeno un prodotto con le dosi di etichetta."}
+        r["efficacy"]["estimated"] = e is not None
 
     # differenze esplicite fra le proposte
     a, b, c = recipes

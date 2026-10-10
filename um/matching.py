@@ -14,6 +14,7 @@ motore con la configurazione modificata: il guadagno mostrato è calcolato, non 
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from typing import Any, Optional
 
@@ -21,7 +22,7 @@ from .engine import ClassIn, Plan, _compress, evaluate, kpis, q_required, sugges
 from .hardware import Catalog, Chain, HwConfig, resolve_chain
 
 OK_PCT, PARTIAL_PCT = 95.0, 60.0
-SLOTS = {"terminal": "Terminale", "rate_control": "Controllo rateo", "ecu": "Centralina", "actuator": "Attuatore / portaugello",
+SLOTS = {"extras": "Sensori e sezioni", "terminal": "Terminale", "rate_control": "Controllo rateo", "ecu": "Centralina", "actuator": "Attuatore / portaugello",
          "flowmeter": "Flussimetro", "valve": "Valvola di regolazione", "pump": "Pompa", "nozzles": "Ugelli"}
 
 
@@ -42,15 +43,52 @@ def _run(cin: list[ClassIn], cfg: HwConfig, cat: Catalog) -> tuple[Chain, list[P
     return chain, plans, kpis(cin, plans)
 
 
-def requirements(cin: list[ClassIn], cfg: HwConfig, cat: Catalog) -> dict[str, Any]:
+def _cell_m(task: Any) -> float:
+    g = getattr(task, "grid", None)
+    if g is not None and g.dlat:
+        return max(1.0, g.dlat * 111_320.0)
+    return 10.0                                  # zone poligonali: risoluzione tipica di una prescrizione
+
+
+def _extras(cfg: HwConfig, cat: Catalog) -> tuple[int, set[str]]:
+    secs = cfg.boom_sections or 0
+    measures: set[str] = set()
+    for code in cfg.extras:
+        p = cat.get(code) or {}
+        c = p.get("capabilities") or {}
+        if p.get("category") == "section_valves" and c.get("sections"):
+            secs = max(secs, int(c["sections"]))
+        if p.get("category") == "sensor" and c.get("measures"):
+            measures.add(str(c["measures"]))
+    return secs, measures
+
+
+def _delivered(cin: list[ClassIn], plans: list[Plan]) -> dict[int, Optional[float]]:
+    """Volume effettivo per zona. Senza rateo variabile la macchina distribuisce un solo volume (media pesata)."""
+    tr = [(c, p) for c, p in zip(cin, plans) if c.rate and c.rate > 0]
+    w = [(c.area or 1.0) for c, _ in tr]
+    uni = sum(c.rate * x for (c, _), x in zip(tr, w)) / (sum(w) or 1.0) if tr else None
+    out: dict[int, Optional[float]] = {}
+    for c, p in zip(cin, plans):
+        if not (c.rate and c.rate > 0):
+            out[c.idx] = None
+        elif p.status == "novra":
+            out[c.idx] = uni
+        else:
+            out[c.idx] = p.delivered
+    return out
+
+
+def requirements(cin: list[ClassIn], cfg: HwConfig, cat: Catalog, cell_m: float = 10.0) -> dict[str, Any]:
     chain, plans, k = _run(cin, cfg, cat)
     treated = [i for i, c in enumerate(cin) if c.rate and c.rate > 0]
     rates = [cin[i].rate for i in treated]
     variable = len({round(r, 2) for r in rates}) > 1
     rows: list[dict[str, Any]] = []
 
-    def row(rid: str, label: str, required: str, available: str, status: str, detail: str = "") -> None:
-        rows.append({"id": rid, "label": label, "required": required, "available": available, "status": status, "detail": detail})
+    def row(rid: str, label: str, required: str, available: str, status: str, detail: str = "", advisory: bool = False) -> None:
+        rows.append({"id": rid, "label": label, "required": required, "available": available, "status": status, "detail": detail,
+                     "advisory": advisory})
 
     row("tc", "Task Controller ISOBUS", "sì: il ricettario arriva al terminale come file ISOXML",
         chain.names.get("Terminale", "nessun terminale"), "ok" if chain.task_controller else "fail",
@@ -97,13 +135,33 @@ def requirements(cin: list[ClassIn], cfg: HwConfig, cat: Catalog) -> dict[str, A
     if switch:
         row("switch", "Commutazione fra ugelli", "il piano usa più di un ugello", f"{chain.ways} vie · SELETRON" if chain.ways > 1 else "portaugello singolo",
             "ok" if len(chain.nozzles) > 1 else "partial")
-    row("sections", "Sezioni di barra", "chiusura per zona/ostacoli", "dato non presente nel catalogo", "unknown",
-        "Il catalogo non riporta il numero di sezioni gestite: verificalo sulla macchina.")
-    row("sensors", "Sensori (pressione, velocità, livello)", "consigliati per la tracciabilità", "dato non presente nel catalogo", "unknown",
-        "Nessun dato sui sensori installati: aggiungili all'elenco quando il catalogo li includerà.")
+    # sezioni: la barra deve chiudere almeno con la risoluzione delle zone (celle della prescrizione)
+    need_sec = max(1, min(13, math.ceil(cfg.boom_width / max(1.0, cell_m))))
+    secs, measures = _extras(cfg, cat)
+    term_max = (cat.caps(cfg.terminal) or {}).get("sections")
+    if chain.individual_nozzle:
+        row("sections", "Sezioni di barra", f"almeno {need_sec} (barra {cfg.boom_width:g} m, zone da {cell_m:.0f} m)",
+            "chiusura ugello per ugello", "ok")
+    elif secs:
+        eff = min(secs, int(term_max)) if term_max else secs
+        row("sections", "Sezioni di barra", f"almeno {need_sec} (barra {cfg.boom_width:g} m, zone da {cell_m:.0f} m)",
+            f"{eff} sezioni" + (f" (terminale fino a {term_max})" if term_max else ""), "ok" if eff >= need_sec else "partial",
+            "" if eff >= need_sec else "Con meno sezioni i bordi delle zone ricevono il volume della zona vicina.")
+    else:
+        row("sections", "Sezioni di barra", f"almeno {need_sec} (barra {cfg.boom_width:g} m, zone da {cell_m:.0f} m)",
+            "numero di sezioni non indicato", "unknown", "Indica le sezioni della macchina nel pannello hardware (Sezioni e sensori).")
+    if variable:
+        has_p = "pressure" in measures or chain.pwm
+        row("sensors", "Sensori per il rateo variabile", "pressione di barra e velocità",
+            ", ".join(sorted({"pressure": "pressione", "speed": "velocità radar", "level": "livello", "wind": "vento"}.get(m, m) for m in measures))
+            + ("" if measures else "velocità dal GPS del terminale") if measures else "velocità dal GPS del terminale",
+            "ok" if has_p else "partial", "" if has_p else "Consigliato: senza sensore di pressione la regolazione non è verificabile durante il lavoro.",
+            advisory=True)
+    else:
+        row("sensors", "Sensori", "velocità (GPS del terminale)", "presente", "ok")
 
     fails = [r for r in rows if r["status"] == "fail"]
-    partial = [r for r in rows if r["status"] == "partial"]
+    partial = [r for r in rows if r["status"] == "partial" and not r.get("advisory")]
     if chain.blockers or fails:
         level = "insufficiente"
     elif partial:
@@ -116,12 +174,13 @@ def requirements(cin: list[ClassIn], cfg: HwConfig, cat: Catalog) -> dict[str, A
         "insufficiente": "La componentistica disponibile non esegue correttamente il ricettario: non è pronto per l'esecuzione.",
     }[level]
     return {"level": level, "text": text, "rows": rows, "kpi": k, "chain": chain, "plans": plans,
+            "delivered": _delivered(cin, plans),
             "blockers": chain.blockers, "warnings": chain.warnings,
             "thresholds": {"ok_pct": OK_PCT, "partial_pct": PARTIAL_PCT}}
 
 
 def match(task: Any, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, float]]) -> dict[str, Any]:
-    r = requirements(_classes(task, rates), cfg, cat)
+    r = requirements(_classes(task, rates), cfg, cat, _cell_m(task))
     return {k: v for k, v in r.items() if k not in ("chain", "plans")}
 
 
@@ -130,7 +189,8 @@ def match(task: Any, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, floa
 def _product(cat: Catalog, code: str) -> dict[str, Any]:
     p = cat.get(code) or {}
     return {"code": p.get("code", code), "name": p.get("name", code), "short": p.get("short", ""),
-            "specs": p.get("specs", ""), "official_url": p.get("official_url", ""), "category": p.get("category", "")}
+            "specs": p.get("specs", ""), "official_url": p.get("official_url", ""), "category": p.get("category", ""),
+            "demo": bool(p.get("demo"))}
 
 
 def _candidates(cfg: HwConfig, base: dict[str, Any], cin: list[ClassIn], cat: Catalog) -> list[tuple[dict[str, Any], str]]:
@@ -172,6 +232,16 @@ def _candidates(cfg: HwConfig, base: dict[str, Any], cin: list[ClassIn], cat: Ca
                 and p["capabilities"]["range_max_l_min"] >= need_hi and (p["capabilities"].get("range_min_l_min") or 0) <= need_lo]
         for m in sorted(fits, key=lambda m: m["capabilities"]["range_max_l_min"])[:2]:
             out.append(({"flowmeter": m["code"]}, "meter"))
+    if rows.get("sections", {}).get("status") in ("partial", "unknown"):
+        need = base.get("need_sections", 3)
+        units = sorted((p for p in prods if p.get("category") == "section_valves"), key=lambda p: (p.get("capabilities") or {}).get("sections", 0))
+        unit = next((u for u in units if u["capabilities"]["sections"] >= need), units[-1] if units else None)
+        if unit:
+            out.append(({"extras": cfg.extras + [unit["code"]]}, "sections"))
+    if rows.get("sensors", {}).get("status") == "partial":
+        ps = next((p for p in prods if p.get("category") == "sensor" and (p.get("capabilities") or {}).get("measures") == "pressure"), None)
+        if ps:
+            out.append(({"extras": cfg.extras + [ps["code"]]}, "sensors"))
     if not chain.blockers and chain.nozzles:
         sug = suggest(cin if len(cin) <= 80 else _compress(cin), cfg, chain, cat)
         for s in sug.get("singles", [])[:2]:
@@ -186,9 +256,15 @@ def _candidates(cfg: HwConfig, base: dict[str, Any], cin: list[ClassIn], cat: Ca
     return out
 
 
-def recommend(task: Any, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, float]]) -> dict[str, Any]:
+OPTIONAL = {"level": "Litri caricati registrati automaticamente: quantità effettive nel documento senza stime.",
+            "wind": "Vento registrato durante il lavoro: dato utile per la deriva e per il registro dei trattamenti."}
+
+
+def recommend(task: Any, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, float]], eff=None) -> dict[str, Any]:
     cin = _classes(task, rates)
-    base = requirements(cin, cfg, cat)
+    cell = _cell_m(task)
+    base = requirements(cin, cfg, cat, cell)
+    base["need_sections"] = max(1, min(13, math.ceil(cfg.boom_width / max(1.0, cell))))
     treated = [i for i, c in enumerate(cin) if c.rate and c.rate > 0]
     flows = [q_required(base["plans"][i].delivered, base["plans"][i].speed, cfg.spacing) * cfg.n_nozzles
              for i in treated if base["plans"][i].delivered and base["plans"][i].speed]
@@ -206,8 +282,8 @@ def recommend(task: Any, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, 
         if key in seen:
             continue
         seen.add(key)
-        new_cfg = replace(cfg, **{k: (list(v) if k == "nozzles" else v) for k, v in changes.items()})
-        after = requirements(cin, new_cfg, cat)
+        new_cfg = replace(cfg, **{k: (list(v) if k in ("nozzles", "extras") else v) for k, v in changes.items()})
+        after = requirements(cin, new_cfg, cat, cell)
         gain = after["kpi"]["on_target_pct"] - before_pct
         level_up = rank[after["level"]] > rank[before_level]
         fixes = req in rows and rows[req]["status"] in ("fail", "partial") and \
@@ -222,7 +298,7 @@ def recommend(task: Any, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, 
             group = "opzionale"
         items = []
         for slot, val in changes.items():
-            codes = val if slot == "nozzles" else [val]
+            codes = [c for c in val if c not in cfg.extras] if slot == "extras" else (val if slot == "nozzles" else [val])
             for code in codes:
                 items.append({"slot": slot, "slot_label": SLOTS.get(slot, slot), "current": getattr(cfg, slot) if slot != "nozzles" else cfg.nozzles,
                               "product": _product(cat, code)})
@@ -238,11 +314,24 @@ def recommend(task: Any, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, 
             "after": {"level": after["level"], "on_target_pct": after["kpi"]["on_target_pct"],
                       "warnings": after["warnings"], "blockers": after["blockers"]},
             "gained": gained,
+            "efficacy": {"before": eff(base["delivered"]) if eff else None, "after": eff(after["delivered"]) if eff else None},
             "why": (f"Porta i volumi eseguibili entro tolleranza dal {before_pct:.0f} % al {after['kpi']['on_target_pct']:.0f} % della superficie"
                     + (f" e la compatibilità da «{before_level}» ad «{after['level']}»" if level_up else "") + ", ricalcolato con il motore idraulico."),
         })
+    # opzionali: sensori che non cambiano l'esito ma aggiungono capacità documentate
+    _, measures = _extras(cfg, cat)
+    for p in cat.products.values():
+        m = (p.get("capabilities") or {}).get("measures")
+        if p.get("category") == "sensor" and m in OPTIONAL and m not in measures and p["code"] not in cfg.extras:
+            recs.append({"group": "opzionale", "requirement": "Tracciabilità", "requirement_id": "trace", "current_limit": "dato non registrato",
+                         "changes": {"extras": cfg.extras + [p["code"]]},
+                         "items": [{"slot": "extras", "slot_label": SLOTS["extras"], "current": "nessuno", "product": _product(cat, p["code"])}],
+                         "before": {"level": before_level, "on_target_pct": before_pct},
+                         "after": {"level": before_level, "on_target_pct": before_pct, "warnings": [], "blockers": []},
+                         "gained": [OPTIONAL[m]], "efficacy": {"before": None, "after": None},
+                         "why": OPTIONAL[m] + " Non cambia la distribuzione."})
     order = {"indispensabile": 0, "precisione": 1, "opzionale": 2}
     recs.sort(key=lambda r: (order[r["group"]], -(r["after"]["on_target_pct"] - r["before"]["on_target_pct"])))
-    return {"ok": True, "level": before_level, "recommendations": recs[:8],
+    return {"ok": True, "level": before_level, "recommendations": recs[:10],
             "needed": before_level != "adeguata" or bool(recs),
             "source": "Catalogo ARAG del progetto (pagine pubbliche, vedi docs/RICERCA_MERCATO.md): verifica sempre la scheda ufficiale."}
