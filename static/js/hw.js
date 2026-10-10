@@ -135,6 +135,7 @@ export class HwPanel {
     this._nozzleInfo();
     const add = $("#noz-add");
     add.hidden = !(this.ways > 1 && this.cfg.nozzles.length < this.ways);
+    add.textContent = this.cfg.nozzles.length === 1 ? "+ Aggiungi un secondo ugello" : "+ Aggiungi un altro ugello";
     $("#noz-help").textContent = this.ways > 1
       ? `Il portaugello ha ${this.ways} vie: puoi montare fino a ${this.ways} ugelli diversi e farli commutare dal SELETRON in base al rateo.`
       : "Con un portaugello normale c'è un solo ugello per posizione. Per commutare tra ugelli serve un SELETRON.";

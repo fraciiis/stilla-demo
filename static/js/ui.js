@@ -1,6 +1,6 @@
 // Componenti di presentazione: esito, indicatori, legenda, dettaglio, tabelle, ugelli e spiegazioni.
 
-import { $, esc, fmt, STATUS, STATUS_BY_KEY, DIFF, badge, rampColor } from "./util.js";
+import { $, esc, fmt, STATUS, STATUS_BY_KEY, DIFF, HATCH, DIFF_HATCH, badge, rampColor, tok } from "./util.js";
 
 // ---------- colori per vista ----------
 export function colorsFor(view, result, task) {
@@ -8,36 +8,37 @@ export function colorsFor(view, result, task) {
   if (view === "rx") {
     const pos = task.classes.map((c) => c.rate).filter((r) => r && r > 0);
     const lo = Math.min(...pos), hi = Math.max(...pos);
-    return task.classes.map((c) => (c.rate && c.rate > 0 ? rampColor(hi > lo ? (c.rate - lo) / (hi - lo) : 0.6) : "#e3e9ee"));
+    return task.classes.map((c) => (c.rate && c.rate > 0 ? rampColor(hi > lo ? (c.rate - lo) / (hi - lo) : 0.6) : tok("--map-none")));
   }
-  if (!result) return Array(n).fill("#cfd7de");
-  const flat = (codes, map) => Array.from({ length: n }, (_, i) => (map[codes[i]] || map.n || {}).color || "#cfd7de");
+  if (!result) return Array(n).fill(tok("--map-off"));
+  // l'array dei colori porta con sé il tratteggio per classe (solo aspetto: lo legge la mappa)
+  const withHatch = (colors, codes, hatchMap) => { colors.hatch = Array.from({ length: n }, (_, i) => hatchMap[codes[i]] || null); return colors; };
+  const flat = (codes, map) => withHatch(Array.from({ length: n }, (_, i) => (map[codes[i]] || map.n || {}).color || tok("--map-off")), codes, HATCH);
   if (view === "hw") return flat(result.plans.s, STATUS);
   if (view === "after") return flat(result.specialisation.s_after, STATUS);
   if (view === "diff" && result.reference) {
-    return Array.from({ length: n }, (_, i) => {
-      const r = task.classes[i].rate;
-      if (!r || r <= 0) return "#e3e9ee";
-      return DIFF[result.reference.cmp[i]].color;
-    });
+    const cmp = result.reference.cmp;
+    const treated = (i) => task.classes[i].rate && task.classes[i].rate > 0;
+    const colors = Array.from({ length: n }, (_, i) => (treated(i) ? DIFF[cmp[i]].color : tok("--map-none")));
+    return withHatch(colors, Array.from({ length: n }, (_, i) => (treated(i) ? cmp[i] : "")), DIFF_HATCH);
   }
-  return Array(n).fill("#cfd7de");
+  return Array(n).fill(tok("--map-off"));
 }
 
 export function legendHtml(view, task, result) {
-  const sw = (c, t) => `<span><i style="background:${c}"></i>${esc(t)}</span>`;
+  const sw = (c, t, h = null) => `<span><i${h ? ` class="h-${h}"` : ""} style="background-color:${c}"></i>${esc(t)}</span>`;
   if (view === "rx") {
     const pos = task.classes.map((c) => c.rate).filter((r) => r && r > 0);
-    if (!pos.length) return sw("#e3e9ee", "Nessun trattamento");
+    if (!pos.length) return sw(tok("--map-none"), "Nessun trattamento");
     const lo = Math.min(...pos), hi = Math.max(...pos);
     const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => rampColor(t)).join(",");
     return `<span>${fmt(lo, 0)} L/ha</span><span class="ramp" style="background:linear-gradient(90deg,${stops})"></span><span>${fmt(hi, 0)} L/ha</span>` +
-      (task.classes.some((c) => c.rate === 0) ? sw("#e3e9ee", "non trattare") : "");
+      (task.classes.some((c) => c.rate === 0) ? sw(tok("--map-none"), "non trattare") : "");
   }
-  if (view === "diff") return sw(DIFF.b.color, DIFF.b.name) + sw(DIFF.w.color, DIFF.w.name) + sw(DIFF.s.color, DIFF.s.name) + sw("#e3e9ee", "non trattare");
+  if (view === "diff") return sw(DIFF.b.color, DIFF.b.name) + sw(DIFF.w.color, DIFF.w.name, DIFF_HATCH.w) + sw(DIFF.s.color, DIFF.s.name) + sw(tok("--map-none"), "non trattare");
   const used = new Set((view === "after" ? result.specialisation.s_after : result.plans.s).split(""));
   const order = ["o", "a", "u", "v", "x", "f", "n"];
-  return order.filter((k) => used.has(k)).map((k) => sw(STATUS[k].color, STATUS[k].name)).join("");
+  return order.filter((k) => used.has(k)).map((k) => sw(STATUS[k].color, STATUS[k].name, HATCH[k])).join("");
 }
 
 // ---------- esito ----------
@@ -90,7 +91,7 @@ export function renderKpis(result, task) {
   const offRef = ref ? ref.under_pct + ref.over_pct + (ref.novra_pct || 0) : null;
   const cards = [];
   cards.push(`<div class="kpi blue"><small>Trattato bene</small><b>${pct(k.on_target_pct)}${ref ? chip(k.on_target_pct - ref.on_target_pct) : ""}</b><em>entro ±${fmt(result.tolerance ?? 5, 0)} % del rateo richiesto</em></div>`);
-  cards.push(`<div class="kpi red"><small>Fuori bersaglio</small><b>${pct(off)}${offRef !== null ? chip(off - offRef, "punti", true) : ""}</b><em>sotto ${pct(k.under_pct)} · sopra ${pct(k.over_pct)}</em></div>`);
+  cards.push(`<div class="kpi ${off >= 0.05 ? "red" : ""}"><small>Fuori bersaglio</small><b>${pct(off)}${offRef !== null ? chip(off - offRef, "punti", true) : ""}</b><em>sotto ${pct(k.under_pct)} · sopra ${pct(k.over_pct)}</em></div>`);
   cards.push(`<div class="kpi"><small>Con adattamento</small><b>${pct(k.adapt_pct)}</b><em>cambio ugello ${pct(k.switch_pct)} · velocità ${pct(k.speed_pct)}</em></div>`);
   if (byArea && k.volume_prescribed_l) {
     cards.push(`<div class="kpi"><small>Miscela</small><b>${fmt(k.volume_delivered_l, 0)} L</b><em>prescritti ${fmt(k.volume_prescribed_l, 0)} L (${k.volume_delta_pct > 0 ? "+" : ""}${fmt(k.volume_delta_pct, 1)} %)</em></div>`);
@@ -136,8 +137,8 @@ export function renderChangebar(result, task, changes, locked) {
   if (nb === 0 && nw === 0) msg = `<b>Nessuna differenza</b> rispetto a ${locked ? "il riferimento fissato" : "prima della modifica"}: ogni zona viene trattata come prima.`;
   else {
     const parts = [];
-    if (nb) parts.push(`<b style="color:#0f6b38">${nb} ${nb === 1 ? "zona va" : "zone vanno"} meglio</b> (${pct((better / tot) * 100)} ${unit})`);
-    if (nw) parts.push(`<b style="color:#a3182a">${nw} ${nw === 1 ? "zona va" : "zone vanno"} peggio</b> (${pct((worse / tot) * 100)} ${unit})`);
+    if (nb) parts.push(`<b class="t-ok">${nb} ${nb === 1 ? "zona va" : "zone vanno"} meglio</b> (${pct((better / tot) * 100)} ${unit})`);
+    if (nw) parts.push(`<b class="t-err">${nw} ${nw === 1 ? "zona va" : "zone vanno"} peggio</b> (${pct((worse / tot) * 100)} ${unit})`);
     msg = `${parts.join(" · ")}. Trattato bene: ${pct(ref.kpi.on_target_pct)} → <b>${pct(k.on_target_pct)}</b> ${chip(dOn)}`;
   }
   el.hidden = false;
@@ -150,7 +151,7 @@ export function renderChangebar(result, task, changes, locked) {
 export function renderDetail(sel, result, task, detail) {
   const el = $("#detail");
   if (sel === null || sel === undefined) {
-    el.innerHTML = `<p class="mut small" style="margin:10px 0 0">Tocca una zona della mappa o una riga della tabella per vedere perché viene trattata così.</p>`;
+    el.innerHTML = `<p class="mut small hint">Tocca una zona della mappa o una riga della tabella per vedere perché viene trattata così.</p>`;
     return;
   }
   const c = task.classes[sel];
@@ -168,7 +169,7 @@ export function renderDetail(sel, result, task, detail) {
   }
   const newRate = detail && detail.i === sel ? detail.new_rate : result.specialisation.new_rate[sel];
   el.innerHTML = `<div class="alert ${st.key === "under" || st.key === "novra" ? "red" : st.key === "adapt" || st.key === "over" ? "amber" : ""}" style="margin-bottom:0">
-    <b><span class="sw" style="background:${c.color || "#999"}"></span>${esc(c.label)} · ${c.area_ha !== null ? fmt(c.area_ha, 2) + " ha · " : ""}richiesti ${fmt(c.rate, 0)} L/ha &nbsp;${badge(code)}</b>
+    <b><span class="sw" style="background:${c.color || tok("--map-nodata")}"></span>${esc(c.label)} · ${c.area_ha !== null ? fmt(c.area_ha, 2) + " ha · " : ""}richiesti ${fmt(c.rate, 0)} L/ha &nbsp;${badge(code)}</b>
     ${p ? `<div>${esc(p.explain)}</div>${p.hint ? `<div class="small" style="margin-top:4px">💡 ${esc(p.hint)}</div>` : ""}` : "<div class='mut'>Calcolo del dettaglio…</div>"}
     ${bits.length ? `<div class="small mut" style="margin-top:4px">Impostazioni per l'operatore: ${bits.join(" · ")}</div>` : ""}
     <div class="small" style="margin-top:4px">${newRate ? `Nel file specializzato questa zona passa da <b>${fmt(c.rate, 0)}</b> a <b>${fmt(newRate, 0)} L/ha</b>${after ? " e viene eseguita " + (STATUS_BY_KEY[after.status] || STATUS.n).name.toLowerCase() : ""}.` : "Nel file specializzato il rateo resta quello della prescrizione."}</div></div>`;
@@ -188,7 +189,7 @@ export function renderZones(result, task, selected) {
   const rows = t.rows.map((r) => {
     const p = r.plan, st = STATUS_BY_KEY[p.status] || STATUS.n;
     const off = !r.rate || r.rate <= 0;
-    return `<tr data-i="${r.i}" class="${selected === r.i ? "sel" : ""}"><td><span class="sw" style="background:${task.classes[r.i].color || "#999"}"></span>${esc(r.label)}</td>
+    return `<tr data-i="${r.i}" class="${selected === r.i ? "sel" : ""}"><td><span class="sw" style="background:${task.classes[r.i].color || tok("--map-nodata")}"></span>${esc(r.label)}</td>
       <td class="n">${r.area_ha !== null ? fmt(r.area_ha, 2) : "—"}</td><td class="n">${off ? "0" : fmt(r.rate, 0)}</td>
       <td>${off ? '<span class="badge off">Non trattare</span>' : `<span class="badge ${st.cls}">${esc(st.name)}</span>`}</td>
       <td class="n">${off ? "—" : fmt(p.delivered, 0)}</td><td>${off ? "—" : esc(p.nozzle || "—")}</td>
@@ -225,10 +226,10 @@ export function renderNozzles(result, task, onApply) {
       const bad = Math.max(0, 100 - o.on_target_pct);
       return `<div class="opt ${best ? "best" : ""}"><b>${o.nozzles.map(esc).join(" + ")}</b>
         <div class="small mut">${pair ? "commutati dal SELETRON" : "ugello singolo"}</div>
-        <div class="meter" title="perfetto / adattato / fuori"><i style="width:${o.ok_pct}%;background:#1f9d55"></i><i style="width:${o.adapt_pct}%;background:#e0a100"></i><i style="width:${bad}%;background:#E03040"></i></div>
+        <div class="meter" title="perfetto ${pct(o.ok_pct)} · adattato ${pct(o.adapt_pct)} · fuori ${pct(bad)}"><i class="m-ok" style="width:${o.ok_pct}%"></i><i class="m-adapt" style="width:${o.adapt_pct}%"></i><i class="m-bad" style="width:${bad}%"></i></div>
         <div>Trattato bene <b>${pct(o.on_target_pct)}</b> ${chip(d)}</div>
         <div class="small mut">${o.fines_avg_pct !== null ? `gocce fini ${pct(o.fines_avg_pct)} · ` : ""}perfetto ${pct(o.ok_pct)}</div>
-        <button class="btn sm primary" type="button" data-apply='${esc(JSON.stringify(o.nozzles))}' style="margin-top:8px">Provalo</button></div>`;
+        <button class="btn sm" type="button" data-apply='${esc(JSON.stringify(o.nozzles))}' style="margin-top:8px">Provalo</button></div>`;
     };
     sh = `<h3 style="margin-top:22px">Ugelli che potrebbero fare meglio</h3>
       <p class="mut small" style="margin:4px 0 0">Calcolati sull'intera prescrizione, con la tua catena di controllo. Adesso: <b>${cur.nozzles.join(" + ")}</b> → ${pct(cur.on_target_pct)} trattato bene.</p>
@@ -239,7 +240,7 @@ export function renderNozzles(result, task, onApply) {
   } else {
     sh = `<p class="mut"><span class="spin"></span> Cerco gli ugelli migliori per questa prescrizione…</p>`;
   }
-  $("#tab-nozzles").innerHTML = `<p class="mut small" style="margin-top:0">Ogni barra mostra i ratei che l'ugello può erogare: la parte piena alla velocità di lavoro, la tratteggiata cambiando velocità. I trattini sono i ratei della prescrizione (verde = raggiunti, rosso = no).</p>
+  $("#tab-nozzles").innerHTML = `<p class="mut small" style="margin-top:0">Ogni barra mostra i ratei che l'ugello può erogare: la parte piena alla velocità di lavoro, la tratteggiata cambiando velocità. I trattini sono i ratei della prescrizione: corti e verdi = raggiunti, lunghi e rossi = non raggiunti.</p>
     <div class="bars">${bars || "<p>Seleziona un ugello.</p>"}</div>${sh}`;
   $("#tab-nozzles").querySelectorAll("[data-apply]").forEach((b) => b.addEventListener("click", () => onApply(JSON.parse(b.dataset.apply))));
 }

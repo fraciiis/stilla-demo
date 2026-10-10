@@ -1,5 +1,7 @@
 // Mappa del campo su canvas: contorno vero, griglia a celle o poligoni di zona, colori per vista.
 
+import { tok } from "./util.js";
+
 const M_PER_DEG = 111320;
 const OUTSIDE = 0xffff;
 
@@ -56,7 +58,7 @@ export class FieldMap {
     this.draw();
   }
 
-  setColors(colors) { this.colors = colors || []; this._dirty = true; this.draw(); }
+  setColors(colors) { this.colors = colors || []; this.hatch = (colors && colors.hatch) || []; this._dirty = true; this.draw(); }
   setSelected(i) { this.selected = i; this._dirty = true; this.draw(); }
 
   hasGeometry() { return !!this.proj; }
@@ -125,11 +127,13 @@ export class FieldMap {
         ctx.globalAlpha = dim && p.class !== sel ? 0.28 : 1;
         ctx.fillStyle = c;
         ctx.fill("evenodd");
+        const hp = this._hatchFor(p.class);
+        if (hp) { ctx.fillStyle = hp; ctx.fill("evenodd"); }
         ctx.globalAlpha = 1;
-        ctx.strokeStyle = "rgba(255,255,255,.85)";
+        ctx.strokeStyle = tok("--map-zone-line");
         ctx.lineWidth = 1.2 * this.dpr;
         ctx.stroke();
-        if (p.class === sel) { ctx.strokeStyle = "#13222e"; ctx.lineWidth = 2.6 * this.dpr; ctx.stroke(); }
+        if (p.class === sel) { ctx.strokeStyle = tok("--map-select"); ctx.lineWidth = 2.6 * this.dpr; ctx.stroke(); }
       }
     } else if (!this._grid && this.task && this.colors.length === 1 && this.colors[0]) {
       // rateo unico senza geometria: tutto il campo dello stesso colore
@@ -139,6 +143,8 @@ export class FieldMap {
         ctx.closePath();
         ctx.fillStyle = this.colors[0];
         ctx.fill("evenodd");
+        const hp = this._hatchFor(0);
+        if (hp) { ctx.fillStyle = hp; ctx.fill("evenodd"); }
       }
     }
 
@@ -146,7 +152,7 @@ export class FieldMap {
     for (const f of this.fields) {
       ctx.beginPath();
       for (const ring of f.rings) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(P.x(x), P.y(y)) : ctx.moveTo(P.x(x), P.y(y)))); ctx.closePath(); }
-      ctx.strokeStyle = "#0b4f80";
+      ctx.strokeStyle = tok("--map-outline");
       ctx.lineWidth = 2.4 * this.dpr;
       ctx.lineJoin = "round";
       ctx.stroke();
@@ -176,6 +182,7 @@ export class FieldMap {
       }
       octx.putImageData(img, 0, 0);
       this._off = off;
+      this._masks = this._hatchMasks(img, g);
       this._dirty = false;
     }
     const x0 = P.x(g.min_lon), x1 = P.x(g.min_lon + g.cols * g.dlon);
@@ -189,7 +196,63 @@ export class FieldMap {
       ctx.clip("evenodd");
     }
     ctx.drawImage(this._off, x0, y0, x1 - x0, y1 - y0);
+    for (const [kind, mask] of this._masks || []) this._drawHatchMask(ctx, mask, kind, x0, y0, x1 - x0, y1 - y0);
     ctx.restore();
+  }
+
+  // ---- tratteggio: gli stati critici restano leggibili anche senza distinguere i colori ----
+  _pattern(kind) {
+    const d = this.dpr, key = `${kind}@${d}`;
+    this._pats = this._pats || new Map();
+    if (!this._pats.has(key)) {
+      const s = Math.round(8 * d), c = document.createElement("canvas");
+      c.width = c.height = s;
+      const x = c.getContext("2d");
+      x.strokeStyle = tok("--map-hatch"); x.lineWidth = 1.8 * d; x.lineCap = "square";
+      const line = (a, b, e, f) => { x.beginPath(); x.moveTo(a, b); x.lineTo(e, f); x.stroke(); };
+      line(0, s, s, 0); line(-s / 2, s / 2, s / 2, -s / 2); line(s / 2, s * 1.5, s * 1.5, s / 2);      // diagonale /
+      if (kind === "v") { line(0, 0, s, s); line(-s / 2, s / 2, s / 2, s * 1.5); line(s / 2, -s / 2, s * 1.5, s / 2); }  // incrociato
+      this._pats.set(key, this.ctx.createPattern(c, "repeat"));
+    }
+    return this._pats.get(key);
+  }
+
+  _hatchFor(k) { const h = this.hatch && this.hatch[k]; return h ? this._pattern(h) : null; }
+
+  _hatchMasks(img, g) {
+    const kinds = new Map();
+    (this.hatch || []).forEach((h, k) => { if (h) { if (!kinds.has(h)) kinds.set(h, new Set()); kinds.get(h).add(k); } });
+    const out = [];
+    for (const [kind, set] of kinds) {
+      const m = document.createElement("canvas");
+      m.width = g.cols; m.height = g.rows;
+      const mctx = m.getContext("2d"), md = mctx.createImageData(g.cols, g.rows);
+      let any = false;
+      for (let r = 0; r < g.rows; r++) {
+        const yy = g.rows - 1 - r;
+        for (let c = 0; c < g.cols; c++) {
+          const k = g.cls[r * g.cols + c];
+          if (k === OUTSIDE || !set.has(k)) continue;
+          const o = (yy * g.cols + c) * 4;
+          md.data[o + 3] = img.data[o + 3]; any = true;
+        }
+      }
+      if (any) { mctx.putImageData(md, 0, 0); out.push([kind, m]); }
+    }
+    return out;
+  }
+
+  _drawHatchMask(ctx, mask, kind, x, y, w, h) {
+    const W = Math.max(1, Math.round(w)), H = Math.max(1, Math.round(h));
+    const t = this._tmp || (this._tmp = document.createElement("canvas"));
+    t.width = W; t.height = H;
+    const tctx = t.getContext("2d");
+    tctx.imageSmoothingEnabled = false;
+    tctx.drawImage(mask, 0, 0, W, H);
+    tctx.globalCompositeOperation = "source-in";
+    tctx.fillStyle = this._pattern(kind);
+    tctx.fillRect(0, 0, W, H);
+    ctx.drawImage(t, x, y, w, h);
   }
 
   _rgba() {
@@ -212,17 +275,18 @@ export class FieldMap {
     const nice = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000].reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a));
     const len = nice / metersPerPx;
     const x = 16 * d, y = this.cv.height - 16 * d;
-    ctx.fillStyle = "rgba(255,255,255,.82)";
+    const ink = tok("--map-ink"), font = getComputedStyle(document.body).fontFamily;
+    ctx.fillStyle = tok("--map-chrome");
     ctx.fillRect(x - 6 * d, y - 22 * d, len + 12 * d, 30 * d);
-    ctx.strokeStyle = "#13222e"; ctx.lineWidth = 2 * d;
+    ctx.strokeStyle = ink; ctx.lineWidth = 2 * d;
     ctx.beginPath(); ctx.moveTo(x, y - 4 * d); ctx.lineTo(x, y); ctx.lineTo(x + len, y); ctx.lineTo(x + len, y - 4 * d); ctx.stroke();
-    ctx.fillStyle = "#13222e"; ctx.font = `600 ${12 * d}px "Source Sans 3",sans-serif`; ctx.textBaseline = "bottom";
+    ctx.fillStyle = ink; ctx.font = `500 ${12 * d}px ${font}`; ctx.textBaseline = "bottom";
     ctx.fillText(nice >= 1000 ? `${nice / 1000} km` : `${nice} m`, x + 2 * d, y - 6 * d);
     // nord
     const nx = this.cv.width - 26 * d, ny = 22 * d;
-    ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.beginPath(); ctx.arc(nx, ny + 6 * d, 17 * d, 0, 7); ctx.fill();
-    ctx.fillStyle = "#E03040"; ctx.beginPath(); ctx.moveTo(nx, ny - 8 * d); ctx.lineTo(nx - 6 * d, ny + 6 * d); ctx.lineTo(nx + 6 * d, ny + 6 * d); ctx.fill();
-    ctx.fillStyle = "#13222e"; ctx.textAlign = "center"; ctx.fillText("N", nx, ny + 21 * d); ctx.textAlign = "start";
+    ctx.fillStyle = tok("--map-chrome"); ctx.beginPath(); ctx.arc(nx, ny + 6 * d, 17 * d, 0, 7); ctx.fill();
+    ctx.fillStyle = ink; ctx.beginPath(); ctx.moveTo(nx, ny - 8 * d); ctx.lineTo(nx - 6 * d, ny + 6 * d); ctx.lineTo(nx + 6 * d, ny + 6 * d); ctx.fill();
+    ctx.textAlign = "center"; ctx.fillText("N", nx, ny + 21 * d); ctx.textAlign = "start";
   }
 
   // ---- interazione ----

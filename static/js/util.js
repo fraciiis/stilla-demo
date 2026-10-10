@@ -31,33 +31,45 @@ export function toast(msg, isErr = false, ms = 4200) {
   toastTimer = setTimeout(() => { t.hidden = true; }, ms);
 }
 
+// Colori dai token CSS (static/css/style.css, :root): un solo posto dove cambiarli
+const tokCache = new Map();
+export function tok(name) {
+  if (!tokCache.has(name)) tokCache.set(name, getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#999");
+  return tokCache.get(name);
+}
+const st = (key, name, cls, t) => ({ key, name, cls, get color() { return tok(t); } });
+
 // Stato di una classe sul tuo hardware (codici di una lettera inviati dal server)
 export const STATUS = {
-  o: { key: "ok", name: "Perfetto", color: "#1f9d55", cls: "ok" },
-  a: { key: "adapt", name: "Con adattamento", color: "#e0a100", cls: "adapt" },
-  u: { key: "under", name: "Sotto-dosato", color: "#E03040", cls: "under" },
-  v: { key: "over", name: "Sovra-dosato", color: "#7b3fb8", cls: "over" },
-  f: { key: "off", name: "Non trattare", color: "#cfd7de", cls: "off" },
-  n: { key: "nodata", name: "Dato mancante", color: "#98a4ae", cls: "off" },
-  x: { key: "novra", name: "Rateo variabile non eseguibile", color: "#3b4650", cls: "novra" },
+  o: st("ok", "Perfetto", "ok", "--map-ok"),
+  a: st("adapt", "Con adattamento", "adapt", "--map-adapt"),
+  u: st("under", "Sotto-dosato", "under", "--map-under"),
+  v: st("over", "Sovra-dosato", "over", "--map-over"),
+  f: st("off", "Non trattare", "off", "--map-off"),
+  n: st("nodata", "Dato mancante", "off", "--map-nodata"),
+  x: st("novra", "Rateo variabile non eseguibile", "novra", "--map-novra"),
 };
 export const STATUS_BY_KEY = Object.fromEntries(Object.values(STATUS).map((s) => [s.key, s]));
 export const DIFF = {
-  b: { name: "Va meglio", color: "#1f9d55" },
-  w: { name: "Va peggio", color: "#E03040" },
-  s: { name: "Invariato", color: "#d9e2e8" },
+  b: { name: "Va meglio", get color() { return tok("--map-better"); } },
+  w: { name: "Va peggio", get color() { return tok("--map-worse"); } },
+  s: { name: "Invariato", get color() { return tok("--map-same"); } },
 };
+// Stati che sulla mappa ricevono anche un tratteggio (leggibili senza distinguere i colori)
+export const HATCH = { u: "u", v: "v" };
+export const DIFF_HATCH = { w: "w" };
 
 export function badge(code) {
   const s = STATUS[code] || STATUS.n;
   return `<span class="badge ${s.cls}">${esc(s.name)}</span>`;
 }
 
-// Rampa blu per i ratei (chiaro = poco, scuro = tanto)
+// Rampa blu per i ratei (chiaro = poco, scuro = tanto), estremi dai token
+const hexRgb = (h) => { const v = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16)); };
 export function rampColor(t) {
   t = Math.max(0, Math.min(1, t));
-  const a = [219, 238, 250], b = [0, 58, 102];
-  const mid = [0, 122, 201];
+  const a = hexRgb(tok("--ramp-lo")), b = hexRgb(tok("--ramp-hi"));
+  const mid = hexRgb(tok("--ramp-mid"));
   let c;
   if (t < 0.5) c = a.map((x, i) => x + (mid[i] - x) * (t / 0.5));
   else c = mid.map((x, i) => x + (b[i] - x) * ((t - 0.5) / 0.5));

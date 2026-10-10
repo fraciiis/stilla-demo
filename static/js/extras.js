@@ -44,9 +44,9 @@ export function renderLabels(summary, task, result) {
     const vmin = Number(d.vmin), vmax = Number(d.vmax);
     const out = box.querySelector(".lblcheck");
     const msgs = [];
-    if (d.vmax && hiAfter !== null && hiAfter > vmax) msgs.push(`<span style="color:#a3182a">⚠ Il rateo massimo del file (${fmt(hiAfter, 0)} L/ha) supera il massimo di etichetta (${fmt(vmax, 0)} L/ha).</span>`);
-    if (d.vmin && lo !== null && lo < vmin) msgs.push(`<span style="color:#a3182a">⚠ Il rateo minimo del file (${fmt(lo, 0)} L/ha) è sotto il minimo di etichetta (${fmt(vmin, 0)} L/ha).</span>`);
-    if (!msgs.length && (d.vmin || d.vmax)) msgs.push(`<span style="color:#0f6b38">✓ I ratei del file stanno nel volume indicato.</span>`);
+    if (d.vmax && hiAfter !== null && hiAfter > vmax) msgs.push(`<span class="t-err">⚠ Il rateo massimo del file (${fmt(hiAfter, 0)} L/ha) supera il massimo di etichetta (${fmt(vmax, 0)} L/ha).</span>`);
+    if (d.vmin && lo !== null && lo < vmin) msgs.push(`<span class="t-err">⚠ Il rateo minimo del file (${fmt(lo, 0)} L/ha) è sotto il minimo di etichetta (${fmt(vmin, 0)} L/ha).</span>`);
+    if (!msgs.length && (d.vmin || d.vmax)) msgs.push(`<span class="t-ok">✓ I ratei del file stanno nel volume indicato.</span>`);
     out.innerHTML = msgs.join("<br>");
   };
   el.querySelectorAll(".lbl").forEach((box) => {
