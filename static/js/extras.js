@@ -1,63 +1,7 @@
-// Schede accessorie: etichette (dati inseriti dall'utente), meteo (Open-Meteo) e condivisione in rete.
+// Schede accessorie: meteo (Open-Meteo) e condivisione in rete. I dati di etichetta sono nella fase Ricettari (recipes.js).
 
 import { $, esc, fmt, toast } from "./util.js";
 import { api } from "./api.js";
-
-const OFFICIAL_DB = "https://www.fitosanitari.salute.gov.it/fitosanitariws_new/";
-
-// ---------------------------------------------------------------- Etichette
-function loadLabels() {
-  try { return JSON.parse(localStorage.getItem("um_labels") || "{}"); } catch { return {}; }
-}
-function saveLabels(all) {
-  try { localStorage.setItem("um_labels", JSON.stringify(all)); } catch { /* storage non disponibile: i dati restano in pagina */ }
-}
-const keyOf = (name) => name.trim().toLowerCase().replace(/\s+/g, " ");
-
-export function renderLabels(summary, task, result) {
-  const el = $("#tab-labels");
-  const all = loadLabels();
-  const prods = (task.products && task.products.length ? task.products : summary.products.map((p) => p.name));
-  const rates = task.classes.map((c) => c.rate).filter((r) => r && r > 0);
-  const lo = rates.length ? Math.min(...rates) : null, hi = rates.length ? Math.max(...rates) : null;
-  const afterNew = result ? result.specialisation.new_rate.filter((x) => x) : [];
-  const hiAfter = rates.length ? Math.max(hi, ...afterNew) : null;
-  const card = (name) => {
-    const d = all[keyOf(name)] || {};
-    return `<div class="lbl" data-p="${esc(keyOf(name))}">
-      <b>${esc(name)}</b>
-      <div class="row2"><div><label class="f">Volume di miscela in etichetta, min (L/ha)</label><input type="number" data-f="vmin" value="${esc(d.vmin ?? "")}" min="0" step="1"></div>
-      <div><label class="f">…massimo (L/ha)</label><input type="number" data-f="vmax" value="${esc(d.vmax ?? "")}" min="0" step="1"></div></div>
-      <div class="row3"><div><label class="f">Dose prodotto (min–max)</label><input type="text" data-f="dose" value="${esc(d.dose ?? "")}" placeholder="es. 1,5–2 L/ha"></div>
-      <div><label class="f">Intervallo di sicurezza (gg)</label><input type="text" data-f="phi" value="${esc(d.phi ?? "")}"></div>
-      <div><label class="f">Max trattamenti</label><input type="text" data-f="maxn" value="${esc(d.maxn ?? "")}"></div></div>
-      <label class="f">Note dall'etichetta</label><input type="text" data-f="note" value="${esc(d.note ?? "")}" placeholder="ugelli, pressione, vento, avvertenze…">
-      <div class="lblcheck small" style="margin-top:8px"></div>
-      <p class="small" style="margin:8px 0 0"><a href="${OFFICIAL_DB}" target="_blank" rel="noopener">Cerca “${esc(name)}” nella banca dati ufficiale ↗</a></p></div>`;
-  };
-  el.innerHTML = `<div class="alert"><b>Etichetta e legge vengono prima di tutto</b>Non ho un archivio di etichette: non invento autorizzazioni né dosi. Qui annoti i dati letti sull'etichetta ufficiale e li confronto con la tua prescrizione. I dati restano solo in questo browser.</div>
-    <p class="mut small">Nel file i ratei sono in L/ha di miscela applicata: ${lo !== null ? `da <b>${fmt(lo, 0)}</b> a <b>${fmt(hi, 0)} L/ha</b>${hiAfter > hi ? ` (nel file specializzato fino a ${fmt(hiAfter, 0)} L/ha)` : ""}` : "nessun rateo positivo"}. Non è la dose del formulato.</p>
-    ${prods.length ? prods.map(card).join("") : '<p class="mut">Il file non indica prodotti.</p>'}
-    <p style="margin-top:14px"><a class="btn sm" href="${OFFICIAL_DB}" target="_blank" rel="noopener">Banca dati prodotti fitosanitari · Ministero della Salute ↗</a></p>`;
-  const refresh = (box) => {
-    const d = all[box.dataset.p] || {};
-    const vmin = Number(d.vmin), vmax = Number(d.vmax);
-    const out = box.querySelector(".lblcheck");
-    const msgs = [];
-    if (d.vmax && hiAfter !== null && hiAfter > vmax) msgs.push(`<span class="t-err">⚠ Il rateo massimo del file (${fmt(hiAfter, 0)} L/ha) supera il massimo di etichetta (${fmt(vmax, 0)} L/ha).</span>`);
-    if (d.vmin && lo !== null && lo < vmin) msgs.push(`<span class="t-err">⚠ Il rateo minimo del file (${fmt(lo, 0)} L/ha) è sotto il minimo di etichetta (${fmt(vmin, 0)} L/ha).</span>`);
-    if (!msgs.length && (d.vmin || d.vmax)) msgs.push(`<span class="t-ok">✓ I ratei del file stanno nel volume indicato.</span>`);
-    out.innerHTML = msgs.join("<br>");
-  };
-  el.querySelectorAll(".lbl").forEach((box) => {
-    refresh(box);
-    box.querySelectorAll("input").forEach((inp) => inp.addEventListener("input", () => {
-      const k = box.dataset.p;
-      all[k] = { ...(all[k] || {}), [inp.dataset.f]: inp.value };
-      saveLabels(all); refresh(box);
-    }));
-  });
-}
 
 // ---------------------------------------------------------------- Meteo
 function centroid(geometry) {

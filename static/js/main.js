@@ -1,35 +1,116 @@
-// Ultimo Metro · coordinamento: file → hardware → esito → file specializzato.
+// Ultimo Metro · coordinamento della pipeline:
+// mappa e zone → tre ricettari → scelta → hardware → componenti ARAG → documentazione.
 
 import { $, $$, esc, fmt, debounce, toast, STATUS, STATUS_BY_KEY } from "./util.js";
 import { api } from "./api.js";
 import { FieldMap } from "./map.js";
 import { HwPanel, PRESETS, presetConfig } from "./hw.js";
 import { colorsFor, legendHtml, renderVerdict, renderKpis, renderChangebar, describeChange, renderDetail, renderZones, renderNozzles, renderHow } from "./ui.js";
-import { renderLabels, renderWeather, openShare } from "./extras.js";
+import { renderWeather, openShare } from "./extras.js";
+import { P, PHASES, open as openPipeline, on as onPipeline, log, invalidateValidation, selectedRecipe, recipeRates, reachable, phaseStatus } from "./pipeline.js";
+import { renderStepper, renderProcess, renderBar } from "./process.js";
+import { renderFieldPhase, loadZoning } from "./zones.js";
+import { initProducts, generate as generateRecipes, renderRecipes, paintRecipes, renderSelect, recipeTask } from "./recipes.js";
+import { refreshMatch, refreshRecs, renderMatch, renderArag } from "./arag.js";
+import { renderDocs, refreshDossier, paintStatus } from "./docs.js";
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const state = {
-  summary: null, geometry: null, taskIndex: 0,
+  summary: null, geometry: null, origin: null, taskIndex: 0,
   cfg: null, applied: null, burst: null, ref: null, refLocked: false,
   result: null, view: "hw", selected: null, detail: null, tab: "zones",
   seq: 0, ctl: null, hw: null, map: null, catalog: null, exported: false,
 };
 
-const task = () => state.summary.tasks[state.taskIndex];
+// operazione del file; dalla fase 4 in poi i «ratei richiesti» sono i volumi del ricettario scelto
+const fileTask = () => state.summary.tasks[state.taskIndex];
+const task = () => { const r = selectedRecipe(); return r ? recipeTask(fileTask(), r) : fileTask(); };
+
+// contesto passato ai moduli delle fasi: niente variabili globali condivise
+const ctx = {
+  task: fileTask, taskIndex: () => state.taskIndex, summary: () => state.summary, geometry: () => state.geometry,
+  origin: () => state.origin, cfg: () => state.cfg, go: (n) => goPhase(n),
+  applyConfig: (cfg) => { state.hw.write(cfg); onHwChange(state.hw.get()); },
+};
 
 // ------------------------------------------------------------------ memoria locale (comodità, facoltativa)
 function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* non disponibile */ } }
 
-function setStep(n) {
-  [1, 2, 3].forEach((i) => {
-    const e = $(`#st${i}`);
-    e.classList.toggle("on", i === n);
-    e.classList.toggle("done", i < n);
-    if (i === n) e.setAttribute("aria-current", "step"); else e.removeAttribute("aria-current");
-  });
+// ------------------------------------------------------------------ fasi
+function goPhase(n) {
+  if (!state.summary || !reachable(n)) return;
+  P.state.phase = n;
+  PHASES.forEach((p) => { $(`#phase-${p.n}`).hidden = p.n !== n; });
+  if (n === 1) renderFieldPhase(ctx);
+  if (n === 2) renderRecipes(ctx);
+  if (n === 3) renderSelect(ctx);
+  if (n === 4) { setupTask(); evaluate(); renderMatch(ctx); if (!P.state.match) refreshMatch(ctx); }
+  if (n === 5) renderArag(ctx);
+  if (n === 6) { paintExportBar(); renderDocs(ctx); }
+  renderStepper(goPhase);
+  renderProcess();
+  updateBar();
+  window.scrollTo(0, 0);
+  const head = $(`#phase-${n} .phase-head h2`);
+  if (head) { head.setAttribute("tabindex", "-1"); head.focus({ preventScroll: true }); }
+}
+
+function updateBar() {
+  const n = P.state.phase, s = P.state, rec = selectedRecipe(), st = phaseStatus();
+  if (!state.summary) return;
+  const z = s.zoning;
+  if (n === 1) renderBar({ title: z ? `${z.groups.filter((g) => g.cls !== "esclusa").length} classi di intervento · variabilità ${z.stats.level || "—"}` : "Analizzo il campo…",
+    sub: z && z.stats.treated ? `Ratei ${fmt(z.stats.rate_min, 0)}–${fmt(z.stats.rate_max, 0)} L/ha · CV ${fmt(z.stats.cv_pct, 0)} %` : "",
+    next: { label: "Avanti: ricettari", disabled: !z || !z.stats.treated, onClick: () => goPhase(2) } });
+  if (n === 2) renderBar({ title: s.recipes ? (rec ? `Scelto: ${rec.letter} · ${rec.title}` : "Confronta e scegli un ricettario") : "Calcolo i ricettari…",
+    sub: s.recipes && !s.recipes.recipes.every((r) => r.complete) ? "Completa i dati di etichetta per calcolare dosi e quantità." : "",
+    back: { label: "Mappa", onClick: () => goPhase(1) },
+    next: { label: rec ? "Rivedi la scelta" : "Scegli un ricettario", disabled: !rec, onClick: () => goPhase(3) } });
+  if (n === 3) renderBar({ title: rec ? `Ricettario ${rec.letter} · ${rec.title}` : "Nessun ricettario scelto", sub: "La scelta non autorizza l'esecuzione: segue la verifica dell'hardware.",
+    back: { label: "Cambia ricettario", onClick: () => goPhase(2) },
+    next: { label: "Conferma e verifica l'hardware", disabled: !rec, onClick: () => { log("Ricettario confermato", rec ? `${rec.letter} · ${rec.title}` : ""); goPhase(4); } } });
+  if (n === 4) {
+    const m = s.match, needArag = st[5] !== "skip";
+    renderBar({ title: m ? `Compatibilità ${m.level}` : "Confronto il ricettario con l'hardware…", sub: m ? m.text : "",
+      back: { label: "Ricettario", onClick: () => goPhase(3) },
+      next: { label: needArag ? "Avanti: componenti ARAG" : "Avanti: documenti", disabled: !m, onClick: () => goPhase(needArag ? 5 : 6) } });
+  }
+  if (n === 5) renderBar({ title: "Componentistica ARAG", sub: s.recs ? `${s.recs.recommendations.length} proposte calcolate` : "",
+    back: { label: "Hardware", onClick: () => goPhase(4) }, next: { label: "Avanti: documenti", onClick: () => goPhase(6) } });
+  if (n === 6) {
+    const d = s.dossier;
+    renderBar({ title: d ? `Documento: ${d.status_label}` : "Compilo il documento…", sub: d && d.missing.length ? `${d.missing.length} dati obbligatori mancanti` : (d ? "Dati obbligatori completi" : ""),
+      back: { label: st[5] === "skip" ? "Hardware" : "Componenti ARAG", onClick: () => goPhase(st[5] === "skip" ? 4 : 5) } });
+  }
+}
+
+// ogni aggiornamento dello stato condiviso ridisegna solo ciò che dipende da lui
+onPipeline((reason) => {
+  if (!state.summary) return;
+  const n = P.state.phase;
+  renderStepper(goPhase);
+  renderProcess();
+  updateBar();
+  if (reason === "recipes") { if (n === 2) paintRecipes(ctx); if (n === 3) renderSelect(ctx); }
+  if (reason === "invalidate:select" || reason === "invalidate:recipes") { if (n === 4) { setupTask(); evaluate(); } refreshMatch(ctx); }
+  if (reason === "match" || reason === "recs") { if (n === 4) renderMatch(ctx); if (n === 5 && reason === "recs") renderArag(ctx); if (n === 6 && reason === "match") refreshDossier(ctx); }
+  if (reason === "dossier" && n === 6) paintStatus();
+});
+
+async function openTask() {
+  const t = fileTask();
+  state.pipeCfg = clone(state.cfg);
+  openPipeline(`${state.summary.filename}#${state.taskIndex}`);
+  initProducts(t, state.summary);
+  try { await loadZoning(ctx); } catch { /* la fase 1 mostra l'errore */ }
+  const want = P.state.phase || 1;
+  if (P.state.recipeId || want >= 2) await generateRecipes(ctx);
+  if (P.state.recipeId && !selectedRecipe()) { P.state.recipeId = ""; P.state.selection = null; }
+  goPhase(reachable(want) ? want : 1);
+  if (selectedRecipe()) refreshMatch(ctx);
 }
 
 // ------------------------------------------------------------------ avvio
@@ -95,11 +176,11 @@ function wire() {
   window.addEventListener("dragover", (e) => e.preventDefault());
   window.addEventListener("drop", (e) => e.preventDefault());
 
-  $("#btn-newfile").addEventListener("click", () => { $("#workspace").hidden = true; $("#landing").hidden = false; setStep(1); window.scrollTo(0, 0); });
+  $("#btn-newfile").addEventListener("click", () => { $("#workspace").hidden = true; $("#landing").hidden = false; renderStepper(goPhase); window.scrollTo(0, 0); });
   $("#btn-share").addEventListener("click", openShare);
   $("#btn-jump").addEventListener("click", () => $("#hw").scrollIntoView({ behavior: "smooth", block: "start" }));
   $("#share-close").addEventListener("click", () => $("#share-dlg").close());
-  $("#task-sel").addEventListener("change", (e) => { state.taskIndex = Number(e.target.value); state.selected = null; state.detail = null; state.ref = null; state.refLocked = false; state.applied = null; setupTask(); evaluate(); });
+  $("#task-sel").addEventListener("change", (e) => { state.taskIndex = Number(e.target.value); state.selected = null; state.detail = null; state.ref = null; state.refLocked = false; state.applied = null; openTask(); });
 
   $$("#views button").forEach((b) => b.addEventListener("click", () => { if (!b.disabled) setView(b.dataset.v); }));
   $$("#tabs button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.t)));
@@ -119,6 +200,7 @@ function wire() {
 async function uploadFile(f) {
   const err = $("#landing-err");
   err.hidden = true;
+  if (/\.(geo)?json$/i.test(f.name)) return geoSetup(f);
   $("#drop").classList.add("busy");
   try {
     const r = await api.upload(f);
@@ -129,6 +211,33 @@ async function uploadFile(f) {
   } finally {
     $("#drop").classList.remove("busy");
   }
+}
+
+// mappa indice GeoJSON: il tecnico sceglie proprietà, classi e regola dei volumi, poi diventa una prescrizione ISOXML
+async function geoSetup(f) {
+  const box = $("#geo-setup"), err = $("#landing-err");
+  box.hidden = false;
+  box.innerHTML = '<p class="mut"><span class="spin"></span> Leggo la mappa indice…</p>';
+  let info;
+  try { info = await api.geojsonInspect(f); } catch (e) { box.hidden = true; err.hidden = false; err.innerHTML = `<b>Non riesco a leggere questa mappa</b>${esc(e.message)}`; return; }
+  if (!info.properties.length) { box.hidden = true; err.hidden = false; err.innerHTML = "<b>Nessun valore numerico</b>Il GeoJSON non ha una proprietà numerica (es. NDVI) da usare per le zone."; return; }
+  box.innerHTML = `<header><h2>Dalla mappa indice alla prescrizione</h2><span class="badge blue">${info.features} poligoni</span></header>
+    <p class="mut">«${esc(f.name)}»${info.boundary ? " · confine del campo presente" : " · nessun confine: verrà stimato con l'inviluppo dei poligoni"}. I volumi li decidi tu: l'app non li ricava da un modello agronomico.</p>
+    <div class="row3"><div><label class="f" for="g-prop">Indice da usare</label><select id="g-prop">${info.properties.map((p) => `<option value="${esc(p.name)}">${esc(p.name)} (${fmt(p.min, 2)}–${fmt(p.max, 2)})</option>`).join("")}</select></div>
+      <div><label class="f" for="g-k">Numero di zone</label><select id="g-k">${[2, 3, 4, 5, 6].map((k) => `<option ${k === 3 ? "selected" : ""}>${k}</option>`).join("")}</select></div>
+      <div><label class="f" for="g-dir">Indice alto significa</label><select id="g-dir"><option value="up">più volume</option><option value="down">meno volume</option></select></div></div>
+    <div class="row3"><div><label class="f" for="g-lo">Volume per l'indice più basso (L/ha)</label><input id="g-lo" type="number" min="1" step="1" placeholder="es. 150"></div>
+      <div><label class="f" for="g-hi">Volume per l'indice più alto (L/ha)</label><input id="g-hi" type="number" min="1" step="1" placeholder="es. 300"></div>
+      <div><label class="f" for="g-crop">Coltura</label><input id="g-crop" type="text" placeholder="facoltativa"></div></div>
+    <div class="actions gap-top"><button class="btn primary" type="button" id="g-go">Crea la mappa operativa</button><button class="btn ghost" type="button" id="g-cancel">Annulla</button></div>`;
+  $("#g-cancel").addEventListener("click", () => { box.hidden = true; });
+  $("#g-go").addEventListener("click", async () => {
+    const params = { property: $("#g-prop").value, classes: Number($("#g-k").value), direction: $("#g-dir").value,
+      vol_low: $("#g-lo").value, vol_high: $("#g-hi").value, crop: $("#g-crop").value, field_name: f.name.replace(/\.[^.]+$/, "") };
+    err.hidden = true;
+    try { const r = await api.geojsonLoad(f, params); box.hidden = true; enter(r); }
+    catch (e) { err.hidden = false; err.innerHTML = `<b>Conversione non riuscita</b>${esc(e.message)}`; }
+  });
 }
 
 async function loadExample(id) {
@@ -143,6 +252,7 @@ async function loadExample(id) {
 function enter(payload) {
   state.summary = payload.summary;
   state.geometry = payload.geometry;
+  state.origin = payload.origin || null;
   state.taskIndex = 0;
   state.selected = null; state.detail = null; state.result = null;
   state.ref = null; state.refLocked = false; state.applied = null; state.burst = null; state.exported = false;
@@ -156,18 +266,17 @@ function enter(payload) {
   const warns = [...(s.warnings || [])];
   $("#landing").hidden = true;
   $("#workspace").hidden = false;
-  setStep(2);
   $("#fb-warn").innerHTML = "";
   if (payload.example && payload.example.suggested_config) {
     state.cfg = { ...state.cfg, ...payload.example.suggested_config };
     state.hw.write(state.cfg);
   }
+  state.warns = warns;
   setupTask(warns);
-  evaluate();
-  window.scrollTo(0, 0);
+  openTask();
 }
 
-function setupTask(extraWarns = []) {
+function setupTask(extraWarns = state.warns || []) {
   const t = task();
   const notes = [...extraWarns, ...(t.notes || [])];
   if (t.extra_rate_vars) notes.push(`Il file contiene ${t.extra_rate_vars} altre variabili di rateo oltre alla principale: le leggo e le riscrivo senza toccarle.`);
@@ -181,7 +290,6 @@ function setupTask(extraWarns = []) {
   state.map.setColors(colorsFor(state.view === "diff" ? "hw" : state.view, state.result, t));
   $("#legend").innerHTML = legendHtml("rx", t, null);
   renderDetail(null, null, t, null);
-  renderLabels(state.summary, t, null);
 }
 
 // ------------------------------------------------------------------ hardware → valutazione
@@ -189,7 +297,21 @@ const commit = debounce(() => {
   if (!state.refLocked && state.burst && !same(state.burst, state.cfg)) state.ref = state.burst;
   state.burst = null;
   evaluate();
+  pipelineHw();
 }, 220);
+
+// a valle: compatibilità, proposte ARAG e validazione dipendono dall'hardware.
+// Confronto con l'ultima configurazione usata dalla pipeline (non con l'ultima valutata: le due corrono in parallelo).
+function pipelineHw() {
+  const prev = state.pipeCfg;
+  if (!prev || same(prev, state.cfg)) return;
+  state.pipeCfg = clone(state.cfg);
+  const ch = describeChange(prev, state.cfg, state.hw.byCode);
+  if (ch.length) log("Hardware modificato", ch.join(" · "));
+  invalidateValidation("l'hardware è cambiato");
+  if (selectedRecipe()) refreshMatch(ctx);
+  if (P.state.recipes) generateRecipes(ctx);
+}
 
 function onHwChange(cfg) {
   state.cfg = cfg;
@@ -207,7 +329,7 @@ async function evaluate() {
   if (state.ctl) state.ctl.abort();
   const ctl = (state.ctl = new AbortController());
   const cfg = clone(state.cfg);
-  const body = { task: state.taskIndex, config: cfg, suggest: state.tab === "nozzles", detail: state.selected };
+  const body = { task: state.taskIndex, config: cfg, suggest: state.tab === "nozzles", detail: state.selected, rates: recipeRates() };
   if (state.ref) body.reference = state.ref;
   $("#kpis").classList.add("busy");
   try {
@@ -241,7 +363,6 @@ function paint() {
   renderNozzles(r, t, applyNozzles);
   renderDetail(state.selected, r, t, state.detail);
   paintExportBar();
-  if (state.tab === "labels") renderLabels(state.summary, t, r);
 }
 
 function paintMap() {
@@ -260,9 +381,8 @@ function setView(v) {
 function setTab(name) {
   state.tab = name;
   $$("#tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.t === name)));
-  for (const n of ["zones", "nozzles", "labels", "weather", "how"]) $(`#tab-${n}`).hidden = n !== name;
+  for (const n of ["zones", "nozzles", "weather", "how"]) $(`#tab-${n}`).hidden = n !== name;
   if (name === "nozzles" && state.result && !state.result.suggestions && !state.result.chain.blockers.length) evaluate();
-  if (name === "labels") renderLabels(state.summary, task(), state.result);
   if (name === "weather") renderWeather(state.geometry, state.result ? state.result.kpi.fines_avg_pct : null);
 }
 
@@ -283,7 +403,7 @@ async function select(k) {
   if (state.selected === null) { state.detail = null; renderDetail(null, state.result, task(), null); return; }
   renderDetail(state.selected, state.result, task(), null);
   try {
-    const r = await api.evaluate({ task: state.taskIndex, config: state.cfg, detail: state.selected });
+    const r = await api.evaluate({ task: state.taskIndex, config: state.cfg, detail: state.selected, rates: recipeRates() });
     if (r.detail && r.detail.i === state.selected) { state.detail = r.detail; renderDetail(state.selected, state.result, task(), r.detail); }
   } catch { /* il dettaglio è un di più */ }
 }
@@ -298,7 +418,7 @@ function onMapHover(k, e) {
   const rate = c.rate && c.rate > 0;
   const after = STATUS[r.specialisation.s_after[k]] || STATUS.n;
   tip.innerHTML = `<b>${esc(c.label)}</b>${rate ? `Richiesti ${fmt(c.rate, 0)} L/ha` : "Non trattare"}<br>${rate ? `Sul tuo hardware: ${esc(st.name.toLowerCase())}${r.plans.delivered[k] !== null ? ` · erogati ${fmt(r.plans.delivered[k], 0)} L/ha` : ""}` : ""}${r.specialisation.new_rate[k] ? `<br>Nel file specializzato: ${fmt(r.specialisation.new_rate[k], 0)} L/ha · ${esc(after.name.toLowerCase())}` : ""}`;
-  const wrap = $(".mapwrap").getBoundingClientRect();
+  const wrap = $("#map").parentElement.getBoundingClientRect();
   tip.hidden = false;
   let x = e.clientX - wrap.left + 14, y = e.clientY - wrap.top + 14;
   const tw = tip.offsetWidth, th = tip.offsetHeight;
@@ -309,6 +429,7 @@ function onMapHover(k, e) {
 
 // ------------------------------------------------------------------ esportazione
 function paintExportBar() {
+  if (!state.result) return;
   const r = state.result, sp = r.specialisation, ag = sp.agronomic;
   const multi = state.summary.tasks.length > 1;
   const blocked = r.chain.blockers.length > 0;
@@ -328,7 +449,17 @@ function paintExportBar() {
   }
   $("#ex-title").textContent = title;
   $("#ex-sub").textContent = sub;
-  const need = sp.n_changed > 0 || multi;
+  // i volumi del ricettario diversi dal file riscrivono anch'essi il TASKDATA: serve la conferma
+  const rr = recipeRates();
+  const differs = !!rr && fileTask().classes.some((c) => c.rate > 0 && rr[c.i] !== undefined && Math.abs(rr[c.i] - c.rate) > 0.005);
+  if (differs && !blocked) {
+    const rec = selectedRecipe();
+    if (sp.n_changed === 0) title = `File con i volumi del ricettario ${rec.letter} · ${rec.title}`;
+    sub = `${sp.n_changed === 0 ? "L'hardware esegue questi volumi." : sub} I volumi del ricettario scelto sostituiscono quelli della prescrizione originale: controllali prima di scaricare.`;
+  }
+  $("#ex-title").textContent = title;
+  $("#ex-sub").textContent = sub;
+  const need = sp.n_changed > 0 || multi || differs;
   $("#ex-approve-wrap").hidden = !need || blocked;
 }
 
@@ -345,13 +476,14 @@ async function doExport() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Preparo il file…';
   try {
-    const { blob, name, summary } = await api.exportFile({ config: state.cfg, approve: cb.checked || wrap.hidden });
+    const { blob, name, summary } = await api.exportFile({ task: state.taskIndex, config: state.cfg, approve: cb.checked || wrap.hidden, rates: recipeRates() });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    state.exported = true; setStep(3);
+    state.exported = true;
+    log("File ISOXML per il terminale scaricato", name);
     const n = summary ? summary.changed_classes : 0;
     $("#ex-title").textContent = `Scaricato: ${name}`;
     $("#ex-sub").textContent = `Riletto dal server prima dell'invio: ${n} ${n === 1 ? "classe riscritta" : "classi riscritte"}, ratei verificati.`;
@@ -368,7 +500,7 @@ async function doExport() {
 async function doReport() {
   const w = window.open("", "_blank");
   try {
-    const html = await api.report({ task: state.taskIndex, config: state.cfg });
+    const html = await api.report({ task: state.taskIndex, config: state.cfg, rates: recipeRates() });
     if (w) { w.document.open(); w.document.write(html); w.document.close(); }
     else {
       const a = document.createElement("a");

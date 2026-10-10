@@ -51,4 +51,33 @@ export const api = {
     return res.text();
   },
   catalog: async () => (await fetch("/data/arag_catalog.json")).json(),
+  // ---- pipeline: zone → ricettari → hardware → ARAG → documenti ----
+  satellite: () => request("/api/satellite"),
+  geojsonInspect: (file) => request("/api/geojson/inspect", {
+    method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Filename": encodeURIComponent(file.name) }, body: file,
+  }),
+  geojsonLoad: (file, params) => request("/api/geojson/load", {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream", "X-Filename": encodeURIComponent(file.name), "X-Params": encodeURIComponent(JSON.stringify(params)) },
+    body: file,
+  }),
+  zoning: (body) => request("/api/zoning", json(body)),
+  recipes: (body, signal) => request("/api/recipes", { ...json(body), signal }),
+  match: (body, signal) => request("/api/match", { ...json(body), signal }),
+  recommend: (body, signal) => request("/api/recommend", { ...json(body), signal }),
+  dossier: (body, signal) => request("/api/dossier", { ...json(body), signal }),
+  async dossierFile(body) {
+    // il file può essere JSON: non passa da parse(), che tratterebbe il JSON come risposta dell'API
+    let res;
+    try { res = await fetch("/api/dossier/file", { credentials: "same-origin", ...json(body) }); }
+    catch { throw new Error("Non riesco a raggiungere il server. È ancora acceso?"); }
+    if (!res.ok) {
+      let msg = `Errore ${res.status}`;
+      try { msg = (await res.json()).error || msg; } catch { /* risposta non JSON */ }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const m = /filename="?([^";]+)"?/.exec(res.headers.get("Content-Disposition") || "");
+    return { blob, name: m ? m[1] : "scheda_trattamento" };
+  },
 };

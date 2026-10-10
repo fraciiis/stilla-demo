@@ -4,18 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#007AC9">
-<title>Ultimo Metro · ISOXML su misura per il tuo hardware Nordson</title>
+<title>Ultimo Metro · dalla mappa del campo al trattamento documentato</title>
 <link rel="stylesheet" href="/css/style.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007AC9'/%3E%3Crect x='7' y='21' width='18' height='4' rx='2' fill='white'/%3E%3Ccircle cx='23' cy='9' r='4.5' fill='%23E03040'/%3E%3C/svg%3E">
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Ultimo Metro</b><small>ISOXML su misura per il tuo hardware Nordson</small></div></div>
-  <nav class="steps" aria-label="Fasi">
-    <span class="step on" id="st1"><i>1</i><span class="st-txt">File ISOXML</span></span>
-    <span class="step" id="st2"><i>2</i><span class="st-txt">Il tuo hardware</span></span>
-    <span class="step" id="st3"><i>3</i><span class="st-txt">Scarica</span></span>
-  </nav>
+  <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Ultimo Metro</b><small>Agricoltura di precisione ARAG · dalla mappa al trattamento</small></div></div>
+  <nav class="steps" id="steps" aria-label="Fasi del trattamento"></nav>
   <button class="btn" id="btn-share" type="button" aria-label="Condividi con gli amici"><span class="long">Condividi con gli amici</span><span class="short">Condividi</span></button>
 </header>
 
@@ -23,21 +19,26 @@
   <!-- ===================== 1 · Caricamento ===================== -->
   <section id="landing" hidden>
     <div class="hero">
-      <span class="eyebrow">Fase 1 di 3 · Carica la prescrizione</span>
-      <h1>Dal file della prescrizione alla tua irroratrice Nordson</h1>
-      <p>Carica l'ISOXML del campo. Scegli l'hardware che hai sulla macchina: vedi subito <b>dove il trattamento riesce e dove no</b>, e scarichi un file <b>specializzato per il tuo impianto</b>.</p>
+      <span class="eyebrow">Fase 1 di 6 · Carica la mappa del campo</span>
+      <h1>Dalla mappa del campo al trattamento documentato</h1>
+      <p>Carica la <b>prescrizione ISOXML</b> o una <b>mappa indice GeoJSON</b> (NDVI, vigore, infestanti). L'app individua le zone di intervento, propone <b>tre ricettari</b>, verifica la tua <b>attrezzatura</b>, suggerisce i componenti ARAG che servono e prepara la <b>documentazione</b>.</p>
     </div>
     <label class="drop" id="drop" for="file">
-      <b>Trascina qui il file ISOXML</b>
-      <span class="mut">.zip con TASKDATA.XML oppure direttamente TASKDATA.XML</span><br>
+      <b>Trascina qui la mappa del campo</b>
+      <span class="mut">ISOXML (.zip o TASKDATA.XML) oppure mappa indice GeoJSON (.geojson, .json) in WGS84</span><br>
       <span class="btn primary" role="button">Scegli un file dal computer</span>
-      <input id="file" type="file" accept=".zip,.xml,application/zip,text/xml" hidden>
+      <input id="file" type="file" accept=".zip,.xml,.geojson,.json,application/zip,text/xml,application/geo+json,application/json" hidden>
     </label>
+    <p class="small mut">Non hai una mappa indice? <a href="/data/esempio_ndvi.geojson" download>Scarica una mappa NDVI di prova</a> (dati sintetici, non un campo reale) e trascinala qui.</p>
     <div id="landing-err" class="alert red" hidden></div>
-    <ol class="how" aria-label="Come funziona">
-      <li><b>Carichi la prescrizione</b><span>Vedi subito campo, zone, ratei e superfici che il file contiene.</span></li>
-      <li><b>Scegli il tuo hardware</b><span>Terminale, Flowtron, SELETRON, ugelli… La mappa si aggiorna a ogni modifica.</span></li>
-      <li><b>Scarichi il file su misura</b><span>I ratei che il tuo impianto non può erogare vengono portati a ciò che davvero riesce a fare.</span></li>
+    <div class="card gap-top" id="geo-setup" hidden></div>
+    <ol class="how six" aria-label="Come funziona">
+      <li><b>Mappa e zone</b><span>Variabilità del campo e classi di intervento, con la provenienza di ogni dato.</span></li>
+      <li><b>Tre ricettari</b><span>Dai dati di etichetta: aderente alla mappa, risparmio entro etichetta, rateo unico.</span></li>
+      <li><b>Scelta tracciata</b><span>Il tecnico sceglie e la decisione entra nel registro.</span></li>
+      <li><b>Verifica dell'hardware</b><span>Ugelli, regolazione, portate e pressioni confrontati con il ricettario.</span></li>
+      <li><b>Componenti ARAG</b><span>Solo se servono: indispensabili, per la precisione, opzionali.</span></li>
+      <li><b>Documentazione</b><span>Scheda di trattamento compilata, con stato e validazione del tecnico.</span></li>
     </ol>
     <h2>Oppure prova con un esempio</h2>
     <div class="examples" id="examples"></div>
@@ -51,8 +52,16 @@
       <select id="task-sel" aria-label="Operazione del file" hidden></select>
       <button class="btn sm" id="btn-newfile" type="button">Cambia file</button>
     </div>
+    <div id="process"></div>
     <div id="fb-warn"></div>
 
+    <section class="phase" id="phase-1" aria-label="Fase 1 · Mappa e zone"></section>
+    <section class="phase" id="phase-2" aria-label="Fase 2 · Ricettari" hidden></section>
+    <section class="phase" id="phase-3" aria-label="Fase 3 · Scelta" hidden></section>
+
+    <section class="phase" id="phase-4" aria-label="Fase 4 · Hardware" hidden>
+    <div class="phase-head"><span class="eyebrow">Fase 4 di 6</span><h2>Il ricettario sulla tua attrezzatura</h2>
+      <p class="mut">Indica i componenti che hai sulla macchina: il confronto usa i volumi del ricettario scelto e si aggiorna a ogni modifica.</p></div>
     <div class="layout">
       <aside class="card hw" id="hw" aria-label="Hardware">
         <div class="hwhead"><h2>Il tuo hardware Nordson</h2><p>Cambia un componente: mappa ed esiti si aggiornano subito.</p></div>
@@ -68,7 +77,8 @@
       </aside>
 
       <div class="maincol">
-        <div class="verdict" id="verdict"></div>
+        <div id="match"></div>
+        <div class="verdict gap-top" id="verdict"></div>
         <p class="jump"><button class="btn sm" id="btn-jump" type="button">Cambia ugelli e hardware ↓</button></p>
         <div class="changebar" id="changebar" hidden></div>
 
@@ -76,7 +86,7 @@
           <header>
             <h2>Il campo</h2>
             <div class="seg" id="views" role="group" aria-label="Vista della mappa">
-              <button type="button" data-v="rx" aria-pressed="false">Prescrizione</button>
+              <button type="button" data-v="rx" aria-pressed="false">Volumi richiesti</button>
               <button type="button" data-v="hw" aria-pressed="true">Sul tuo hardware</button>
               <button type="button" data-v="after" aria-pressed="false">File specializzato</button>
               <button type="button" data-v="diff" aria-pressed="false" disabled title="Disponibile dopo aver cambiato un componente">Rispetto a prima</button>
@@ -93,24 +103,38 @@
           <div class="tabs" role="tablist" id="tabs">
             <button role="tab" aria-selected="true" data-t="zones">Zone</button>
             <button role="tab" aria-selected="false" data-t="nozzles">Ugelli e portate</button>
-            <button role="tab" aria-selected="false" data-t="labels">Etichette</button>
             <button role="tab" aria-selected="false" data-t="weather">Meteo</button>
             <button role="tab" aria-selected="false" data-t="how">Come si calcola</button>
           </div>
           <div id="tab-zones"></div>
           <div id="tab-nozzles" hidden></div>
-          <div id="tab-labels" hidden></div>
           <div id="tab-weather" hidden></div>
           <div id="tab-how" hidden class="prose"></div>
         </div>
       </div>
     </div>
 
-    <div class="exportbar" id="exportbar">
-      <div class="info"><b id="ex-title">File specializzato</b><span class="mut small" id="ex-sub"></span></div>
-      <label class="check" id="ex-approve-wrap" hidden><input type="checkbox" id="ex-approve"><span>Ho controllato i ratei che cambiano</span></label>
-      <button class="btn" id="btn-report" type="button">Rapporto</button>
-      <button class="btn primary" id="btn-export" type="button"><span>Scarica ISOXML<span class="long"> per il mio hardware</span></span></button>
+    </section>
+
+    <section class="phase" id="phase-5" aria-label="Fase 5 · Componenti ARAG" hidden></section>
+
+    <section class="phase" id="phase-6" aria-label="Fase 6 · Documenti" hidden>
+      <div class="phase-head"><span class="eyebrow">Fase 6 di 6</span><h2>Documentazione del trattamento</h2>
+        <p class="mut">Compilata con i dati delle fasi precedenti: completa solo ciò che spetta all'operatore. Generare il documento non equivale a validarlo.</p></div>
+      <div class="card terminal-file">
+        <header><h2>File per il terminale</h2></header>
+        <div class="info"><b id="ex-title">File specializzato</b><span class="mut small" id="ex-sub"></span></div>
+        <label class="check" id="ex-approve-wrap" hidden><input type="checkbox" id="ex-approve"><span>Ho controllato i ratei che cambiano</span></label>
+        <div class="actions"><button class="btn primary" id="btn-export" type="button"><span>Scarica ISOXML<span class="long"> per il mio hardware</span></span></button>
+          <button class="btn" id="btn-report" type="button">Rapporto tecnico</button></div>
+      </div>
+      <div id="docs-dyn" class="gap-top"></div>
+    </section>
+
+    <div class="exportbar" id="phasebar">
+      <div class="info"><b id="pb-title"></b><span class="mut small" id="pb-sub"></span></div>
+      <button class="btn" id="pb-back" type="button" hidden>Indietro</button>
+      <button class="btn primary" id="pb-next" type="button" hidden>Avanti</button>
     </div>
   </section>
 </main>
