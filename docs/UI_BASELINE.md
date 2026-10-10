@@ -74,3 +74,44 @@ CLAUDE.md indica `#007AC9` su bianco a ~4,3:1. Il calcolo WCAG 2.x dà **4,54:1*
    - `static/js/map.js` è solo disegno, ma contiene anche il calcolo dei clic (`_hit`). Per A6 aggiungerei un tratteggio sulle zone sotto/sovra-dosate dentro `draw()`, senza toccare proiezione né `_hit`.
    - `um/report.py` (server Python) genera il rapporto stampabile con CSS interno: allinearlo ai nuovi token vuol dire toccare un file backend, anche se solo la stringa `CSS`. Propongo di **lasciarlo com'è** salvo tua conferma.
 4. **Branch.** CLAUDE.md chiede `ui-redesign`; questa sessione è vincolata a `claude/esecuzione-progetto-1q3bi4`. Lavoro qui; se vuoi, il branch si rinomina al merge.
+
+## 5. Redesign applicato (decisioni del 10/10/2026)
+
+Decisioni: font da web app al posto di Neue Montreal (assente) · palette approvata · via libera su `util.js` e `map.js` · `um/report.py` lasciato com'è · si resta su questo branch.
+
+| # | Intervento | File |
+|---|---|---|
+| font | **Inter** 400/500 in locale (`static/fonts/inter-*.woff2`, licenza OFL in `OFL-Inter.txt`), fallback `"Helvetica Neue", Arial`. Peso 500 per titoli, pulsanti, etichette, numeri | `style.css`, `static/fonts/` |
+| A11, A12 | token centralizzati: colori, scala tipografica, spazi, raggi, icone. I colori della mappa li legge anche JS (`tok()` in `util.js`) | `style.css`, `util.js` |
+| A1, A14 | stepper sempre visibile: in testata su desktop/tablet, seconda riga fissa su telefono (la riga del marchio scorre via). Fase completata = spunta | `style.css`, `index.html` |
+| A2 | la fase 3 mostra se il download è pronto (contorno) o bloccato (lucchetto), letto dal pulsante di download: nessuna logica nuova | `style.css` |
+| A3 | barra di esportazione più compatta su telefono; «Provalo» non è più un'azione primaria | `style.css`, `ui.js` |
+| A4 | card «Fuori bersaglio» rossa solo quando c'è davvero qualcosa fuori bersaglio | `ui.js` |
+| A5 | freccia del Nord in inchiostro, non più rossa | `map.js` |
+| A6 | tratteggio diagonale (sotto-dosato), incrociato (sovra-dosato) e diagonale su «va peggio», anche su griglia; stessa trama nella legenda. Trattini delle portate: lunghi = non raggiunti, corti = raggiunti | `map.js`, `ui.js`, `style.css` |
+| A7 | badge con testo scuro su fondo chiaro + simbolo (✓ ≈ ▼ ▲ ≠) | `style.css` |
+| A8, A9, A10 | bordi dei campi 3,42:1 · bottone disabilitato con barrato + suggerimento · link `#0066A8` | `style.css`, `index.html` |
+| A13 | target ≥ 44 px (38 px solo per `.btn.sm` con mouse), checkbox 22 px con area di tocco 44 | `style.css` |
+| A15 | «Aggiungi un altro ugello» dal secondo in poi · niente doppio spazio in «Scarica ISOXML per il mio hardware» | `hw.js`, `index.html` |
+| stati | esito, avvisi, toast e meteo hanno sempre icona + testo | `style.css` |
+
+Verifiche: 49/49 test OK · nessun errore JS · nessuno scroll orizzontale sugli 8 esempi a 375/768/1440 px · screenshot «dopo» in `docs/ui-after/` con gli stessi nomi di `docs/ui-baseline/`.
+Il flusso è identico: `main.js`, `api.js` e `um/` non sono stati modificati, quindi chiamate, corpi delle richieste e file prodotti restano gli stessi.
+
+Restano fuori: il rapporto stampabile (`um/report.py`) usa ancora il vecchio stile; i file Source Sans 3 restano in `static/fonts/` ma non sono più usati.
+
+## 6. Tipologie di mappa
+
+Il server classifica ogni operazione (`task.kind` in `um/isoxml.py`) e la mappa (`static/js/map.js`) ha quattro modi di disegno:
+
+| Tipo (`kind`) | Cosa contiene | Come si disegna | Esempi |
+|---|---|---|---|
+| `zones_geo` | zone TZN con poligoni (anche con buchi) | poligoni vettoriali | 01, 05 (operazione 1) |
+| `grid1` | griglia GRD tipo 1: ogni cella ha un codice zona | raster a celle, ritagliato sul contorno | 02, 05 (operazione 2) |
+| `grid2` | griglia GRD tipo 2: un valore per cella (mappa continua) | raster a celle, classi raggruppate in fasce nella tabella | 03 |
+| `zones_nogeo` | ratei senza posizione | un solo rateo: campo pieno · più ratei: solo contorno + messaggio | 04, 06 |
+| `none` | nessun rateo | solo contorno | — |
+
+Varianti che cambiano l'aspetto senza cambiare tipo: griglia **senza coordinate** adattata al campo (`geo: false`, es. 07), contorno del campo **ricavato dalla griglia** (`from_grid`), campo in **file esterno XFR** (es. 08), griglie grandi **campionate** per la visualizzazione (`decimated`).
+
+Su ognuna si applicano 4 viste di colore: Prescrizione (rampa blu per L/ha), Sul tuo hardware (stati), File specializzato (stati dopo la riscrittura), Rispetto a prima (meglio / peggio / invariato).
