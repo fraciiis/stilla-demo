@@ -57,6 +57,8 @@ export function renderMatch(ctx) {
   box.innerHTML = `<div class="card match ${L.cls}">
     <header><h2>Ricettario sull'hardware</h2><span class="badge ${L.badge}">${esc(L.word)}</span></header>
     <p>${esc(m.text)}</p>
+    ${m.efficacy && m.efficacy.recipe !== null ? `<dl class="facts"><div><dt>Efficacia attesa del ricettario <span class="badge demo">simulata</span></dt><dd>${fmt(m.efficacy.recipe, 0)} % ± ${fmt(m.efficacy.band, 0)}</dd></div>
+      <div><dt>Con questa attrezzatura</dt><dd>${m.efficacy.on_hardware === null ? "—" : `${fmt(m.efficacy.on_hardware, 0)} %`}${m.efficacy.on_hardware !== null && m.efficacy.on_hardware < m.efficacy.recipe - 0.5 ? ` <span class="delta down">−${fmt(m.efficacy.recipe - m.efficacy.on_hardware, 0)} punti</span>` : ""}</dd></div></dl>` : ""}
     <div class="tw"><table class="t"><thead><tr><th>Requisito</th><th>Richiesto</th><th>Disponibile</th><th>Esito</th></tr></thead><tbody>
       ${m.rows.map((r) => `<tr><td>${esc(r.label)}${r.detail ? `<div class="small mut">${esc(r.detail)}</div>` : ""}</td><td>${esc(r.required)}</td><td>${esc(r.available)}</td><td><span class="badge ${ROW[r.status][0]}">${ROW[r.status][1]}</span></td></tr>`).join("")}
     </tbody></table></div>
@@ -90,12 +92,13 @@ export function renderArag(ctx) {
         <div><dt>Requisito non soddisfatto</dt><dd>${esc(r.requirement)}</dd></div>
         <div><dt>Limite attuale</dt><dd>${esc(r.current_limit || "—")}</dd></div>
         <div><dt>Entro tolleranza</dt><dd>${fmt(r.before.on_target_pct, 0)} % → <b>${fmt(r.after.on_target_pct, 0)} %</b></dd></div>
+        ${r.efficacy && r.efficacy.after !== null && r.efficacy.after !== undefined ? `<div><dt>Efficacia attesa <span class="badge demo">simulata</span></dt><dd>${fmt(r.efficacy.before, 0)} % → <b>${fmt(r.efficacy.after, 0)} %</b></dd></div>` : ""}
       </dl>
       <p>${esc(r.why)}</p>
       ${r.gained.length ? `<ul class="diffs">${r.gained.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` : ""}
       <div class="tw"><table class="t"><thead><tr><th>Posizione</th><th>Oggi</th><th>Proposto</th></tr></thead><tbody>
         ${r.items.map((it) => `<tr><td>${esc(it.slot_label)}</td><td>${esc(Array.isArray(it.current) ? it.current.join(" + ") : it.current || "nessuno")}</td>
-          <td><b>${esc(it.product.code)}</b> · ${esc(it.product.name)}<div class="small mut">${esc(it.product.specs || it.product.short)}</div>${it.product.official_url ? `<a class="small" href="${esc(it.product.official_url)}" target="_blank" rel="noopener">Scheda ufficiale ↗</a>` : ""}</td></tr>`).join("")}
+          <td><b>${esc(it.product.code)}</b> · ${esc(it.product.name)}${it.product.demo ? ' <span class="badge demo">DEMO</span>' : ""}<div class="small mut">${esc(it.product.specs || it.product.short)}</div>${it.product.official_url ? `<a class="small" href="${esc(it.product.official_url)}" target="_blank" rel="noopener">Scheda ufficiale ↗</a>` : ""}</td></tr>`).join("")}
       </tbody></table></div>
       ${r.after.warnings.length ? `<div class="alert amber"><b>Da verificare con questa configurazione</b><ul>${r.after.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
       <button class="btn" type="button" data-apply="${i}">Prova questa configurazione</button>

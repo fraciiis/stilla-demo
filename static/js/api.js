@@ -50,7 +50,26 @@ export const api = {
     const res = await request("/api/report", json(body));
     return res.text();
   },
-  catalog: async () => (await fetch("/data/arag_catalog.json")).json(),
+  // catalogo reale + estensione dimostrativa (sensori, valvole di sezione: codici DEMO-…)
+  async catalog() {
+    const real = await (await fetch("/data/arag_catalog.json")).json();
+    let extra = { products: [], capability_overrides: {} };
+    try { extra = await (await fetch("/data/demo_catalog.json")).json(); } catch { /* estensione facoltativa */ }
+    const codes = new Set(real.products.map((p) => p.code));
+    real.products = real.products.map((p) => {
+      const ov = (extra.capability_overrides || {})[p.code];
+      if (!ov) return p;
+      const caps = { ...(p.capabilities || {}) };
+      Object.entries(ov).forEach(([k, v]) => { if (caps[k] === null || caps[k] === undefined) caps[k] = v; });
+      return { ...p, capabilities: caps };
+    });
+    (extra.products || []).forEach((p) => { if (!codes.has(p.code)) real.products.push({ ...p, demo: true }); });
+    return real;
+  },
+  labelsDb: async () => (await fetch("/data/demo_etichette.json")).json(),
+  demoFields: () => request("/api/demo/fields"),
+  demoSearch: (field) => request(`/api/satellite/search?field=${encodeURIComponent(field)}`),
+  demoLoad: (body) => request("/api/demo/load", json(body)),
   // ---- pipeline: zone → ricettari → hardware → ARAG → documenti ----
   satellite: () => request("/api/satellite"),
   geojsonInspect: (file) => request("/api/geojson/inspect", {

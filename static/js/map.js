@@ -39,6 +39,8 @@ export class FieldMap {
     this._dirty = true;
     this.labels = [];
     this.smooth = false;
+    this.imagery = null;          // { canvas, bbox, smooth, base? } ortofoto o mappa indice sotto le zone
+    this.overlay = 1;             // opacità delle zone sopra l'immagine
     this._fadeFrom = null;
     this._colorKey = undefined;
     this._reduced = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
@@ -105,6 +107,10 @@ export class FieldMap {
   }
   setSelected(i) { this.selected = i; this._dirty = true; this.draw(); }
 
+  // immagine di sfondo georiferita (ortofoto, NDVI…) e opacità delle zone sopra di essa
+  setImagery(img, overlay = this.overlay) { this.imagery = img; this.overlay = overlay; this._bounds(); this.draw(); }
+  setOverlay(a) { this.overlay = a; this.draw(); }
+
   hasGeometry() { return !!this.proj; }
   hasCells() { return !!(this._grid || (this.task && this.task.polygons && this.task.polygons.length)); }
 
@@ -118,6 +124,7 @@ export class FieldMap {
       add(g.min_lon, g.min_lat); add(g.min_lon + g.cols * g.dlon, g.min_lat + g.rows * g.dlat);
     }
     if (this.task) for (const p of this.task.polygons || []) for (const r of p.rings) for (const [x, y] of r) add(x, y);
+    if (this.imagery) { const b = this.imagery.bbox; add(b.minLon, b.minLat); add(b.maxLon, b.maxLat); }
     this.bb = isFinite(minx) ? { minx, maxx, miny, maxy } : null;
   }
 
@@ -132,7 +139,7 @@ export class FieldMap {
   _project() {
     const bb = this.bb;
     if (!bb) { this.proj = null; return; }
-    const W = this.cv.width, H = this.cv.height, pad = 26 * this.dpr;
+    const W = this.cv.width, H = this.cv.height, pad = (this.h.pad ?? 26) * this.dpr;
     const lat0 = (bb.miny + bb.maxy) / 2, kx = Math.cos((lat0 * Math.PI) / 180);
     const wm = Math.max(1e-9, (bb.maxx - bb.minx) * kx), hm = Math.max(1e-9, bb.maxy - bb.miny);
     const s = Math.min((W - 2 * pad) / wm, (H - 2 * pad) / hm);
@@ -159,15 +166,29 @@ export class FieldMap {
     const d = this.dpr;
     const fieldPath = (f) => { ctx.beginPath(); for (const ring of f.rings) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(P.x(x), P.y(y)) : ctx.moveTo(P.x(x), P.y(y)))); ctx.closePath(); } };
 
-    // il campo come una "tessera" in rilievo sullo sfondo
-    ctx.save();
-    ctx.shadowColor = tok("--map-shadow"); ctx.shadowBlur = 22 * d; ctx.shadowOffsetY = 8 * d;
-    ctx.fillStyle = tok("--map-field");
-    for (const f of this.fields) if (f.rings.length) { fieldPath(f); ctx.fill("evenodd"); }
-    ctx.restore();
+    if (this.imagery) {
+      // immagine georiferita: ortofoto o indice, con il suo contesto attorno al campo
+      const drawImg = (im) => {
+        const b = im.bbox, x0 = P.x(b.minLon), x1 = P.x(b.maxLon), y0 = P.y(b.maxLat), y1 = P.y(b.minLat);
+        ctx.imageSmoothingEnabled = !!im.smooth; ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(im.canvas, x0, y0, x1 - x0, y1 - y0);
+      };
+      if (this.imagery.base) drawImg(this.imagery.base);
+      drawImg(this.imagery);
+      ctx.imageSmoothingEnabled = false;
+    } else {
+      // il campo come una "tessera" in rilievo sullo sfondo
+      ctx.save();
+      ctx.shadowColor = tok("--map-shadow"); ctx.shadowBlur = 22 * d; ctx.shadowOffsetY = 8 * d;
+      ctx.fillStyle = tok("--map-field");
+      for (const f of this.fields) if (f.rings.length) { fieldPath(f); ctx.fill("evenodd"); }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    const zoneAlpha = this.imagery ? this.overlay : 1;
 
     // celle di griglia
-    if (this._grid) this._drawGrid(ctx, P, dim);
+    if (this._grid && zoneAlpha > 0) { ctx.globalAlpha = zoneAlpha; this._drawGrid(ctx, P, dim); ctx.globalAlpha = 1; }
 
     // poligoni di zona
     if (this.task && this.task.polygons && this.task.polygons.length) {
@@ -177,7 +198,7 @@ export class FieldMap {
         ctx.beginPath();
         for (const ring of p.rings) ring.forEach(([x, y], i) => (i ? ctx.lineTo(P.x(x), P.y(y)) : ctx.moveTo(P.x(x), P.y(y))));
         ctx.closePath();
-        ctx.globalAlpha = dim && p.class !== sel ? 0.28 : 1;
+        ctx.globalAlpha = (dim && p.class !== sel ? 0.28 : 1) * zoneAlpha;
         ctx.fillStyle = c;
         ctx.fill("evenodd");
         const hp = this._hatchFor(p.class);
@@ -220,8 +241,8 @@ export class FieldMap {
       ctx.strokeStyle = tok("--map-halo"); ctx.lineWidth = 5.5 * d; ctx.stroke();
       ctx.strokeStyle = tok("--map-outline"); ctx.lineWidth = 2.2 * d; ctx.stroke();
     }
-    this._drawLabels(ctx, P, dim);
-    this._furniture(ctx, P);
+    if (zoneAlpha > 0.15) this._drawLabels(ctx, P, dim);
+    if (this.h.furniture !== false) this._furniture(ctx, P);
 
     // dissolvenza dallo stato precedente
     if (this._fadeFrom) {

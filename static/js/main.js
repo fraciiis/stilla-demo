@@ -13,6 +13,7 @@ import { renderFieldPhase, loadZoning } from "./zones.js";
 import { initProducts, generate as generateRecipes, renderRecipes, paintRecipes, renderSelect, recipeTask } from "./recipes.js";
 import { refreshMatch, refreshRecs, renderMatch, renderArag } from "./arag.js";
 import { renderDocs, refreshDossier, paintStatus } from "./docs.js";
+import { renderGallery } from "./demo.js";
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -146,6 +147,8 @@ async function init() {
     $("#examples").innerHTML = ex.examples.map((e) => `<button class="ex" type="button" data-id="${esc(e.id)}"><b>${esc(e.title)}</b><span>${esc(e.description)}</span></button>`).join("");
     $$(".ex").forEach((b) => b.addEventListener("click", () => loadExample(b.dataset.id)));
   } catch { /* gli esempi sono facoltativi */ }
+  renderGallery((r) => enter(r));
+  renderStepper(goPhase);
 }
 
 const CHAIN_KEYS = ["terminal", "rate_control", "ecu", "actuator", "flowmeter", "valve", "pump"];
@@ -201,6 +204,11 @@ async function uploadFile(f) {
   const err = $("#landing-err");
   err.hidden = true;
   if (/\.(geo)?json$/i.test(f.name)) return geoSetup(f);
+  if (/\.zip$/i.test(f.name)) {                      // può essere ISOXML o uno shapefile: decide il server
+    try { const r = await api.upload(f); if (r.vector) return geoSetup(f, r.vector); enter(r); }
+    catch (e) { err.hidden = false; err.innerHTML = `<b>Non riesco a leggere questo file</b>${esc(e.message)}`; }
+    return;
+  }
   $("#drop").classList.add("busy");
   try {
     const r = await api.upload(f);
@@ -214,12 +222,12 @@ async function uploadFile(f) {
 }
 
 // mappa indice GeoJSON: il tecnico sceglie proprietà, classi e regola dei volumi, poi diventa una prescrizione ISOXML
-async function geoSetup(f) {
+async function geoSetup(f, pre = null) {
   const box = $("#geo-setup"), err = $("#landing-err");
   box.hidden = false;
   box.innerHTML = '<p class="mut"><span class="spin"></span> Leggo la mappa indice…</p>';
-  let info;
-  try { info = await api.geojsonInspect(f); } catch (e) { box.hidden = true; err.hidden = false; err.innerHTML = `<b>Non riesco a leggere questa mappa</b>${esc(e.message)}`; return; }
+  let info = pre;
+  try { if (!info) info = await api.geojsonInspect(f); } catch (e) { box.hidden = true; err.hidden = false; err.innerHTML = `<b>Non riesco a leggere questa mappa</b>${esc(e.message)}`; return; }
   if (!info.properties.length) { box.hidden = true; err.hidden = false; err.innerHTML = "<b>Nessun valore numerico</b>Il GeoJSON non ha una proprietà numerica (es. NDVI) da usare per le zone."; return; }
   box.innerHTML = `<header><h2>Dalla mappa indice alla prescrizione</h2><span class="badge blue">${info.features} poligoni</span></header>
     <p class="mut">«${esc(f.name)}»${info.boundary ? " · confine del campo presente" : " · nessun confine: verrà stimato con l'inviluppo dei poligoni"}. I volumi li decidi tu: l'app non li ricava da un modello agronomico.</p>
@@ -253,6 +261,7 @@ function enter(payload) {
   state.summary = payload.summary;
   state.geometry = payload.geometry;
   state.origin = payload.origin || null;
+  $("#demo-flag").hidden = !(state.origin && state.origin.demo);
   state.taskIndex = 0;
   state.selected = null; state.detail = null; state.result = null;
   state.ref = null; state.refLocked = false; state.applied = null; state.burst = null; state.exported = false;

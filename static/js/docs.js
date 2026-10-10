@@ -75,6 +75,8 @@ export function paintStatus() {
   if (!d) { box.innerHTML = '<p class="mut"><span class="spin"></span> Compilo il documento…</p>'; return; }
   const [cls, word] = STATUS[d.status];
   box.innerHTML = `<div class="docstate"><span class="badge ${cls} big">${word}</span><span class="mut small">generato ${esc(d.generated_at.replace("T", " "))} · modalità ${esc(d.mode)}</span></div>
+    ${d.demo && d.demo.length ? `<div class="alert demo"><b>Documento dimostrativo</b>Contiene dati simulati: ${esc(d.demo.join(", "))}. Mostra il funzionamento, non vale per un trattamento reale.</div>` : ""}
+    ${d.efficacy && d.efficacy.recipe !== null ? `<p class="small">Efficacia attesa (simulata): <b>${fmt(d.efficacy.recipe, 0)} %</b> sul ricettario · <b>${d.efficacy.on_hardware === null ? "—" : fmt(d.efficacy.on_hardware, 0) + " %"}</b> con l'attrezzatura scelta.</p>` : ""}
     ${d.missing.length ? `<div class="alert red"><b>Dati obbligatori mancanti (${d.missing.length})</b><ul>${d.missing.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div>` : ""}
     ${d.to_validate.length ? `<div class="alert amber"><b>Prima della validazione</b><ul>${d.to_validate.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div>` : ""}
     ${d.status === "validato" ? `<div class="alert"><b>Validato da ${esc(d.validation.name)} · ${esc(d.validation.at)}</b>È la conferma del tecnico sui dati: non attesta la conformità normativa.</div>` : ""}

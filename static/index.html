@@ -12,6 +12,7 @@
 <header class="top">
   <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Ultimo Metro</b><small>Agricoltura di precisione ARAG · dalla mappa al trattamento</small></div></div>
   <nav class="steps" id="steps" aria-label="Fasi del trattamento"></nav>
+  <span class="demo-flag" id="demo-flag" hidden title="Sono in uso dati simulati">DEMO</span>
   <button class="btn" id="btn-share" type="button" aria-label="Condividi con gli amici"><span class="long">Condividi con gli amici</span><span class="short">Condividi</span></button>
 </header>
 
@@ -23,9 +24,16 @@
       <h1>Dalla mappa del campo al trattamento documentato</h1>
       <p>Carica la <b>prescrizione ISOXML</b> o una <b>mappa indice GeoJSON</b> (NDVI, vigore, infestanti). L'app individua le zone di intervento, propone <b>tre ricettari</b>, verifica la tua <b>attrezzatura</b>, suggerisce i componenti ARAG che servono e prepara la <b>documentazione</b>.</p>
     </div>
+    <section class="demo-sec" aria-labelledby="demo-title">
+      <div class="demo-head"><h2 id="demo-title">Inizia da una mappa da drone o satellite</h2><span class="badge demo">Campi dimostrativi · dati simulati</span></div>
+      <p class="mut">Scegli un campo: vedi ortofoto, NDVI e (per il mais) la mappa delle infestanti, scegli l'acquisizione e avvia tutto il processo.</p>
+      <div class="dgallery" id="demo-gallery"></div>
+      <div class="card gap-top" id="demo-setup" hidden></div>
+    </section>
+    <h2 class="or-title">Oppure carica la tua mappa</h2>
     <label class="drop" id="drop" for="file">
       <b>Trascina qui la mappa del campo</b>
-      <span class="mut">ISOXML (.zip o TASKDATA.XML) oppure mappa indice GeoJSON (.geojson, .json) in WGS84</span><br>
+      <span class="mut">ISOXML (.zip o TASKDATA.XML), mappa indice GeoJSON oppure shapefile zippato (WGS84 o UTM)</span><br>
       <span class="btn primary" role="button">Scegli un file dal computer</span>
       <input id="file" type="file" accept=".zip,.xml,.geojson,.json,application/zip,text/xml,application/geo+json,application/json" hidden>
     </label>
@@ -40,7 +48,7 @@
       <li><b>Componenti ARAG</b><span>Solo se servono: indispensabili, per la precisione, opzionali.</span></li>
       <li><b>Documentazione</b><span>Scheda di trattamento compilata, con stato e validazione del tecnico.</span></li>
     </ol>
-    <h2>Oppure prova con un esempio</h2>
+    <h2>Oppure prova una prescrizione ISOXML di esempio</h2>
     <div class="examples" id="examples"></div>
     <p class="mut small privacy">Il file resta nella tua sessione su questo server: gli altri visitatori non lo vedono. Gli esempi sono dati di prova, non campi reali.</p>
   </section>
@@ -73,6 +81,7 @@
         <details class="grp" open id="g-nozzles"><summary>Ugelli <span class="chip-sum" id="s-nozzles"></span></summary><div class="body" id="b-nozzles"></div></details>
         <details class="grp" open id="g-chain"><summary>Catena di controllo <span class="chip-sum" id="s-chain"></span></summary><div class="body" id="b-chain"></div></details>
         <details class="grp" id="g-work"><summary>Barra e lavoro <span class="chip-sum" id="s-work"></span></summary><div class="body" id="b-work"></div></details>
+        <details class="grp" id="g-extra"><summary>Sezioni e sensori <span class="chip-sum" id="s-extra"></span></summary><div class="body" id="b-extra"></div></details>
         <details class="grp" id="g-spec"><summary>Specializzazione <span class="chip-sum" id="s-spec"></span></summary><div class="body" id="b-spec"></div></details>
       </aside>
 

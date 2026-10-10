@@ -155,6 +155,10 @@ export function describeChange(prev, cur, byCode) {
   for (const k of Object.keys(nums)) if ((prev[k] ?? null) !== (cur[k] ?? null)) out.push(`${nums[k]}: ${prev[k] ?? "auto"} → ${cur[k] ?? "auto"}`);
   if (prev.allow_speed_adapt !== cur.allow_speed_adapt) out.push(cur.allow_speed_adapt ? "velocità adattabile" : "velocità fissa");
   if (prev.strategy !== cur.strategy) out.push(`strategia: ${prev.strategy} → ${cur.strategy}`);
+  if ((prev.boom_sections ?? null) !== (cur.boom_sections ?? null)) out.push(`sezioni: ${prev.boom_sections ?? "—"} → ${cur.boom_sections ?? "—"}`);
+  const px = prev.extras || [], cx = cur.extras || [];
+  cx.filter((c) => !px.includes(c)).forEach((c) => out.push(`aggiunto ${nm(c)}`));
+  px.filter((c) => !cx.includes(c)).forEach((c) => out.push(`tolto ${nm(c)}`));
   return out;
 }
 

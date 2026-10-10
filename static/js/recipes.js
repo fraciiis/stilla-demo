@@ -66,7 +66,9 @@ function productCard(p, i) {
   const num = (k, label, extra = "") => `<div><label class="f" for="p${i}-${k}">${label}</label><input id="p${i}-${k}" data-k="${k}" type="number" min="0" step="any" value="${v(k)}" ${extra}></div>`;
   return `<div class="prod" data-i="${i}">
     <div class="prod-head"><input class="pname" data-k="name" value="${v("name")}" aria-label="Nome commerciale" placeholder="Nome commerciale">
+      ${p.demo ? '<span class="badge demo">DEMO</span>' : ""}
       <button class="btn sm ghost" type="button" data-rm="${i}" aria-label="Togli ${v("name") || "prodotto"}">Togli</button></div>
+    ${p.active ? `<p class="small mut">${esc(p.active)}${p.efficacy ? ` · efficacia di base ${fmt(p.efficacy * 100, 0)} % (dato dimostrativo)` : ""}</p>` : ""}
     <div class="row3">
       <div><label class="f" for="p${i}-reg_no">N. registrazione</label><input id="p${i}-reg_no" data-k="reg_no" type="text" value="${v("reg_no")}" placeholder="dall'etichetta"></div>
       <div><label class="f" for="p${i}-source">Fonte</label><input id="p${i}-source" data-k="source" type="text" value="${v("source")}" placeholder="etichetta autorizzata del …"></div>
@@ -99,6 +101,7 @@ function recipeCard(r) {
       ${r.products.map((p) => `<div><dt>${esc(p.name)}</dt><dd>${p.quantity === null ? "—" : `${fmt(p.quantity, 1)} ${esc(p.unit.split("/")[0])}`}</dd></div>`).join("")}
       <div><dt>Costo prodotti</dt><dd>${r.totals.cost === null ? "—" : fmt(r.totals.cost, 0) + " €"}</dd></div>
       <div><dt>Sull'hardware attuale</dt><dd>${hw ? `${fmt(hw.on_target_pct, 0)} % entro tolleranza` : "—"}</dd></div>
+      <div><dt>Efficacia attesa <span class="badge demo">simulata</span></dt><dd>${r.efficacy && r.efficacy.value !== null ? `<span class="eff">${fmt(r.efficacy.value, 0)} %<small>± ${fmt(r.efficacy.band, 0)}</small></span>` : "—"}</dd></div>
     </dl>
     <p class="small mut">${esc(r.tradeoff)}</p>
     ${r.differences.length ? `<ul class="diffs">${r.differences.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
@@ -115,7 +118,7 @@ function compareTable(rs) {
   };
   const prodNames = rs[0].products.map((p) => p.name);
   return `<div class="tw"><table class="t cmp"><thead><tr><th></th>${rs.map((r) => `<th class="n">${esc(r.letter)} · ${esc(r.title)}</th>`).join("")}</tr></thead><tbody>
-    <tr><th scope="row">Efficacia attesa</th>${rs.map(() => '<td class="n mut">non stimata</td>').join("")}</tr>
+    ${row("Efficacia attesa", rs.map((r) => (r.efficacy ? r.efficacy.value : null)), (v) => `${fmt(v, 0)} % ± 5`, false, "simulata · DEMO")}
     ${row("Aderenza alla prescrizione", rs.map((r) => r.metrics.deviation_pct), (v) => `scostamento ${fmt(v, 0)} %`, true, "precisione spaziale")}
     ${row("Superficie entro le dosi di etichetta", rs.map((r) => r.metrics.within_label_pct), (v) => `${fmt(v, 0)} %`, false)}
     ${row("Miscela totale", rs.map((r) => r.totals.mixture_l), (v) => `${fmt(v, 0)} L`)}
@@ -126,7 +129,7 @@ function compareTable(rs) {
     ${row("Eseguibile sull'hardware attuale", rs.map((r) => (r.metrics.hardware ? r.metrics.hardware.on_target_pct : null)), (v) => `${fmt(v, 0)} %`, false, "compatibilità")}
     <tr><th scope="row">Vincoli</th>${rs.map((r) => `<td class="n">${r.constraints.length ? `${r.constraints.length}` : "0"}</td>`).join("")}</tr>
   </tbody></table></div>
-  <p class="small mut">«Migliore» confronta solo i numeri della riga: la scelta resta del tecnico. L'efficacia non è stimata perché manca un modello agronomico validato.</p>`;
+  <p class="small mut">«Migliore» confronta solo i numeri della riga: la scelta resta del tecnico. L'efficacia è simulata con un modello dimostrativo dichiarato (sotto, «Come sono calcolati»).</p>`;
 }
 
 export function renderRecipes(ctx) {
@@ -139,8 +142,10 @@ export function renderRecipes(ctx) {
       <header><h2>Obiettivo e prodotti</h2><a class="btn sm" href="${OFFICIAL_DB}" target="_blank" rel="noopener">Banca dati fitosanitari ↗</a></header>
       <div class="row2"><div><label class="f" for="o-objective">Obiettivo del trattamento</label><input id="o-objective" type="text" value="${esc(s.options.objective)}" placeholder="es. peronospora, infestanti graminacee…"></div>
       <div><label class="f" for="o-tank">Capacità del serbatoio (L)</label><input id="o-tank" type="number" min="0" step="10" value="${esc(s.options.tank_l)}" placeholder="per contare i serbatoi"></div></div>
+      <div class="dbpick"><div><label class="f" for="db-sel">Banca dati etichette <span class="badge demo">DEMO</span></label><select id="db-sel"><option value="">Carico…</option></select></div>
+        <button class="btn sm primary" type="button" id="db-add">Aggiungi dalla banca dati</button></div>
       <div id="prods">${s.products.map(productCard).join("")}</div>
-      <button class="btn sm" type="button" id="p-add">+ Aggiungi un prodotto</button>
+      <button class="btn sm" type="button" id="p-add">+ Aggiungi un prodotto a mano</button>
       <p class="small mut">I dati restano in questo browser e vengono riproposti per lo stesso prodotto. Indica sempre la fonte: finisce nel documento.</p>
     </div>
     <div id="recipes-out" class="gap-top"></div>`;
@@ -166,6 +171,7 @@ export function renderRecipes(ctx) {
     set({}, "products"); renderRecipes(ctx);
     const last = $$(".prod .pname").pop(); if (last) { last.select(); last.focus(); }
   });
+  fillDb(ctx);
   $("#o-objective").addEventListener("input", (e) => { s.options.objective = e.target.value; set({}, "options"); regen(ctx); });
   $("#o-tank").addEventListener("input", (e) => { s.options.tank_l = e.target.value; set({}, "options"); regen(ctx); });
   paintRecipes(ctx);
@@ -181,9 +187,34 @@ export function paintRecipes(ctx) {
     <div class="recipes">${r.recipes.map(recipeCard).join("")}</div>
     <div class="card gap-top"><header><h2>Confronto</h2></header>${compareTable(r.recipes)}</div>
     <details class="card gap-top more"><summary>Come sono calcolati</summary>
-      <ul>${r.formulas.map((f) => `<li><b>${esc(f.name)}</b>: <code>${esc(f.expr)}</code> — ${esc(f.note)} <span class="mut small">(${esc(f.where)})</span></li>`).join("")}</ul>
+      <ul>${r.formulas.map((f) => `<li><b>${esc(f.name)}</b>: <code>${esc(f.expr)}</code> — ${esc(f.note)} <span class="mut small">(${esc(f.where)})</span></li>`).join("")}
+        ${r.recipes[0].efficacy && r.recipes[0].efficacy.model ? `<li><b>Efficacia attesa (simulata)</b>: ${esc(r.recipes[0].efficacy.model)}</li>` : ""}</ul>
       <p class="small mut">A e B usano gli stessi volumi della prescrizione (portati dentro la finestra di volume dell'etichetta, se indicata); C usa la media pesata. Una sola miscela nel serbatoio ⇒ concentrazione costante ⇒ la dose per ettaro segue il volume di ogni zona.</p></details>`;
   out.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => pick(ctx, b.dataset.pick)));
+}
+
+// banca dati etichette DIMOSTRATIVA: prodotti inventati ma verosimili, filtrati per la coltura del campo
+let db = null;
+async function fillDb(ctx) {
+  const sel = $("#db-sel");
+  try { db = db || await api.labelsDb(); } catch { sel.closest(".dbpick").hidden = true; return; }
+  const origin = ctx.origin() || {};
+  const crop = `${origin.crop || ""} ${(ctx.summary().fields || []).map((f) => f.crop || "").join(" ")}`.toLowerCase();
+  const fit = (p) => p.crops.some((c) => crop.includes(c));
+  const list = [...db.products].sort((a, b) => Number(fit(b)) - Number(fit(a)));
+  sel.innerHTML = list.map((p, i) => `<option value="${i}">${esc(p.name)} · ${esc(p.active)}${fit(p) ? "" : " (altra coltura)"}</option>`).join("");
+  $("#db-add").onclick = () => {
+    const p = list[Number(sel.value)];
+    if (!p) return;
+    if (P.state.products.some((x) => x.name.toLowerCase() === p.name.toLowerCase())) { toast("Prodotto già presente"); return; }
+    const today = new Date().toISOString().slice(0, 10);
+    // tolgo i segnaposto vuoti del file (nessun dato di etichetta)
+    P.state.products = P.state.products.filter((x) => x.dose_min !== "" || x.reg_no);
+    P.state.products.push({ ...fromStore(p.name), ...p, source: db.source, checked_on: today, demo: true });
+    if (!P.state.options.objective && origin.target) P.state.options.objective = origin.target;
+    log("Prodotto aggiunto dalla banca dati (DEMO)", `${p.name} · ${p.reg_no}`);
+    set({}, "products"); renderRecipes(ctx); generate(ctx);
+  };
 }
 
 function pick(ctx, id) {

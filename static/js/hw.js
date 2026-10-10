@@ -24,7 +24,7 @@ export const PRESETS = [
 export const DEFAULTS = {
   pressure_set: 3, pressure_min: null, pressure_max: null, boom_width: 24, spacing: 0.5, nozzle_count: null,
   speed_nom: 8, speed_min: 6, speed_max: 10, tolerance_pct: 5, duty_min_pct: 20, spray_height: 0.5,
-  allow_speed_adapt: true, strategy: "auto", uniform_rate: null,
+  allow_speed_adapt: true, strategy: "auto", uniform_rate: null, boom_sections: null, extras: [],
 };
 
 export function presetConfig(id) {
@@ -80,6 +80,15 @@ export class HwPanel {
       <select id="s-strategy"><option value="auto">Automatica (consigliata)</option><option value="variable">Mantieni ratei variabili</option><option value="uniform">Rateo unico</option></select>
       <p class="nozinfo" id="s-help"></p>
       <div id="s-uni" hidden><label class="f" for="s-urate">Rateo unico (L/ha) <span class="mut">(vuoto = media pesata)</span></label><input id="s-urate" type="number" min="1" max="2000" step="1"></div>`;
+    const bx = $("#b-extra");
+    const extras = this.cat.products.filter((p) => p.category === "sensor" || p.category === "section_valves");
+    bx.innerHTML = `<label class="f" for="x-sections">Sezioni di barra già presenti sulla macchina</label><input id="x-sections" type="number" min="1" max="60" step="1" placeholder="non indicato">
+      <p class="nozinfo">Servono per chiudere la barra con la risoluzione delle zone. I componenti qui sotto si aggiungono all'impianto.</p>
+      ${extras.map((p) => `<label class="check"><input type="checkbox" data-x="${esc(p.code)}"><span>${esc(p.name)}${p.demo ? ' <span class="badge demo">DEMO</span>' : ""}<br><span class="mut small">${esc(p.short || "")}</span></span></label>`).join("")}`;
+    for (const el of bx.querySelectorAll("input")) {
+      el.addEventListener("change", () => { this._read(); this._changed(false); });
+      if (el.type === "number") el.addEventListener("input", () => { this._read(); this._changed(false); });
+    }
     for (const el of [...bw.querySelectorAll("input"), ...bs.querySelectorAll("input,select")]) {
       el.addEventListener("input", () => { this._read(); this._changed(false); });
       el.addEventListener("change", () => { this._read(); this._changed(false); });
@@ -178,6 +187,8 @@ export class HwPanel {
     c.pressure_max = this._num("#w-pmax");
     c.strategy = $("#s-strategy").value;
     c.uniform_rate = this._num("#s-urate");
+    c.boom_sections = this._num("#x-sections");
+    c.extras = [...document.querySelectorAll("#b-extra [data-x]")].filter((el) => el.checked).map((el) => el.dataset.x);
   }
 
   write(cfg) {
@@ -190,6 +201,8 @@ export class HwPanel {
     $("#w-tol").value = this.cfg.tolerance_pct; $("#w-duty").value = this.cfg.duty_min_pct;
     $("#w-pmin").value = this.cfg.pressure_min ?? ""; $("#w-pmax").value = this.cfg.pressure_max ?? "";
     $("#s-strategy").value = this.cfg.strategy; $("#s-urate").value = this.cfg.uniform_rate ?? "";
+    $("#x-sections").value = this.cfg.boom_sections ?? "";
+    document.querySelectorAll("#b-extra [data-x]").forEach((el) => { el.checked = (this.cfg.extras || []).includes(el.dataset.x); });
     this._afterChain();
     this._renderNozzles();
     this._summaries();
@@ -233,6 +246,8 @@ export class HwPanel {
     $("#s-chain").textContent = [nm(c.terminal), ...bits].filter(Boolean).join(" · ") || "da completare";
     $("#s-work").textContent = `${fmt(c.boom_width, 0)} m · ${fmt(c.speed_nom, 0)} km/h`;
     $("#s-spec").textContent = { auto: "automatica", variable: "ratei variabili", uniform: "rateo unico" }[c.strategy];
+    const nx = (c.extras || []).length;
+    $("#s-extra").textContent = [c.boom_sections ? `${c.boom_sections} sezioni` : "", nx ? `${nx} componenti` : ""].filter(Boolean).join(" · ") || "da indicare";
   }
 
   _changed(structural) {
