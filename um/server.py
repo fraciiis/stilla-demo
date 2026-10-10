@@ -22,7 +22,16 @@ from .service import ServiceError, SessionStore
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DEFAULT_PORT = 8765
-MAX_JSON_BYTES = 2 * 1024 * 1024
+MAX_JSON_BYTES = 4 * 1024 * 1024        # la scheda di trattamento può includere l'immagine della mappa
+
+PIPELINE = {
+    "/api/zoning": service.zoning_payload,
+    "/api/recipes": service.recipes_payload,
+    "/api/match": service.match_payload,
+    "/api/recommend": service.recommend_payload,
+    "/api/dossier": service.dossier_payload,
+    "/api/dossier/file": None,
+}
 COOKIE = "um_sid"
 
 mimetypes.add_type("font/woff2", ".woff2")
@@ -151,7 +160,9 @@ class Handler(BaseHTTPRequestHandler):
                 with sess.lock:
                     if sess.rx is None:
                         return self._json({"ok": True, "loaded": False})
-                    return self._json({"loaded": True, "filename": sess.filename, **service.import_payload(sess.rx)})
+                    return self._json({"loaded": True, "filename": sess.filename, **service.import_payload(sess.rx, sess.origin)})
+            if path == "/api/satellite":
+                return self._json(service.satellite_status())
             if path.startswith("/api/"):
                 return self._fail(404, "Percorso non trovato.")
             return self._static(path)
@@ -171,6 +182,18 @@ class Handler(BaseHTTPRequestHandler):
                     sess.raw, sess.rx, sess.filename = None, None, ""
                 self._read_body(MAX_JSON_BYTES)
                 return self._json({"ok": True})
+            if path in ("/api/geojson/inspect", "/api/geojson/load"):
+                return self._geojson(sess, path.endswith("load"))
+            if path in PIPELINE:
+                body = self._json_body()
+                if body is None:
+                    return
+                with sess.lock:
+                    if path == "/api/dossier/file":
+                        data, ctype, name = service.dossier_file(sess, body)
+                        return self._send(200, data, ctype, extra={"Content-Disposition": f'attachment; filename="{name}"',
+                                                                   "Access-Control-Expose-Headers": "Content-Disposition"})
+                    return self._json(PIPELINE[path](sess, body))
             if path in ("/api/example", "/api/evaluate", "/api/export", "/api/report"):
                 body = self._json_body()
                 if body is None:
@@ -225,6 +248,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(413, f"File troppo grande (massimo {isoxml.MAX_UPLOAD_BYTES // (1024 * 1024)} MB).")
         with sess.lock:
             self._json(service.load_into(sess, raw, name))
+
+    def _geojson(self, sess, load: bool) -> None:
+        raw = self._read_body(isoxml.MAX_UPLOAD_BYTES)
+        if raw is None:
+            return
+        name = os.path.basename(urllib.parse.unquote(self.headers.get("X-Filename") or "mappa.geojson").replace("\\", "/")) or "mappa.geojson"
+        if not load:
+            return self._json(service.geojson_inspect(raw))
+        try:
+            params = json.loads(urllib.parse.unquote(self.headers.get("X-Params") or "{}"))
+        except ValueError:
+            return self._fail(400, "Parametri di conversione non validi.")
+        if not isinstance(params, dict):
+            return self._fail(400, "Parametri di conversione non validi.")
+        with sess.lock:
+            self._json(service.geojson_load(sess, raw, name, params))
 
     def _network_payload(self) -> dict[str, Any]:
         port = self.server.server_address[1]

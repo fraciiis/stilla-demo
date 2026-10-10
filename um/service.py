@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from . import isoxml
+from . import dossier, geoimport, isoxml, matching, recipes, satellite, zoning
 from .engine import ClassIn, Plan, compare, envelope, evaluate, kpis, specialise, suggest
 from .hardware import Catalog, HwConfig, load_catalog, resolve_chain
 from .isoxml import Rx
@@ -35,6 +35,7 @@ class Session:
     raw: Optional[bytes] = None
     filename: str = ""
     rx: Optional[Rx] = None
+    origin: Optional[dict[str, Any]] = None          # da dove arriva il file: None = ISOXML caricato, oppure mappa indice GeoJSON
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
@@ -70,15 +71,31 @@ class SessionStore:
 
 # --------------------------------------------------------------------------- importazione
 
-def load_into(session: Session, raw: bytes, filename: str) -> dict[str, Any]:
+def load_into(session: Session, raw: bytes, filename: str, origin: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     pkg = isoxml.read_package(raw, filename)
     rx = isoxml.analyse(pkg)
-    session.raw, session.filename, session.rx = raw, filename, rx
-    return import_payload(rx)
+    session.raw, session.filename, session.rx, session.origin = raw, filename, rx, origin
+    return import_payload(rx, origin)
 
 
-def import_payload(rx: Rx) -> dict[str, Any]:
-    return {"ok": True, "summary": isoxml.public_summary(rx), "geometry": isoxml.public_geometry(rx)}
+def import_payload(rx: Rx, origin: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    return {"ok": True, "summary": isoxml.public_summary(rx), "geometry": isoxml.public_geometry(rx), "origin": origin}
+
+
+def geojson_inspect(raw: bytes) -> dict[str, Any]:
+    try:
+        return geoimport.inspect(raw)
+    except geoimport.GeoImportError as exc:
+        raise ServiceError(str(exc))
+
+
+def geojson_load(session: Session, raw: bytes, filename: str, params: dict[str, Any]) -> dict[str, Any]:
+    try:
+        data, origin = geoimport.build(raw, filename, params)
+    except geoimport.GeoImportError as exc:
+        raise ServiceError(str(exc))
+    base = re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(filename)[0]).strip("_") or "mappa"
+    return load_into(session, data, f"{base}_prescrizione.zip", origin)
 
 
 def list_examples() -> list[dict[str, Any]]:
@@ -117,12 +134,32 @@ def _task(session: Session, index: Any) -> isoxml.TaskModel:
         raise ServiceError("Operazione non trovata nel file.")
 
 
-def _classes_in(task: isoxml.TaskModel) -> list[ClassIn]:
-    return [ClassIn(k.idx, k.rate, k.area_ha) for k in task.classes]
+def _rates(body: dict[str, Any]) -> Optional[dict[int, float]]:
+    """Volumi del ricettario scelto ({indice classe: L/ha}); None = ratei del file."""
+    raw = body.get("rates")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ServiceError("Volumi del ricettario non validi.")
+    out: dict[int, float] = {}
+    for k, v in raw.items():
+        try:
+            i, r = int(k), float(v)
+        except (TypeError, ValueError):
+            raise ServiceError("Volumi del ricettario non validi.")
+        if not 0 < r <= 2000:
+            raise ServiceError("Volume del ricettario fuori campo (0–2000 L/ha).")
+        out[i] = r
+    return out
 
 
-def _is_variable(task: isoxml.TaskModel) -> bool:
-    return len({round(k.rate, 2) for k in task.classes if k.rate and k.rate > 0}) > 1
+def _classes_in(task: isoxml.TaskModel, rates: Optional[dict[int, float]] = None) -> list[ClassIn]:
+    return [ClassIn(k.idx, rates.get(k.idx, k.rate) if (rates is not None and k.rate and k.rate > 0) else k.rate, k.area_ha)
+            for k in task.classes]
+
+
+def _is_variable(task: isoxml.TaskModel, rates: Optional[dict[int, float]] = None) -> bool:
+    return len({round(c.rate, 2) for c in _classes_in(task, rates) if c.rate and c.rate > 0}) > 1
 
 
 def _columns(plans: list[Plan]) -> dict[str, Any]:
@@ -147,9 +184,12 @@ def _columns(plans: list[Plan]) -> dict[str, Any]:
     }
 
 
-def _table_rows(task: isoxml.TaskModel, plans: list[Plan], spec_new: dict[int, float], cmp: Optional[list[str]]) -> dict[str, Any]:
+def _table_rows(task: isoxml.TaskModel, plans: list[Plan], spec_new: dict[int, float], cmp: Optional[list[str]],
+                cin: Optional[list[ClassIn]] = None) -> dict[str, Any]:
     """Righe per la tabella: una per classe (≤ 40) oppure per fascia di rateo se le classi sono molte."""
-    ks = task.classes
+    from types import SimpleNamespace
+    ks = task.classes if cin is None else [SimpleNamespace(idx=k.idx, label=k.label, zone_code=k.zone_code, area_ha=k.area_ha, rate=c.rate)
+                                           for k, c in zip(task.classes, cin)]
     if len(ks) <= 40:
         rows = []
         for k, p in zip(ks, plans):
@@ -181,10 +221,10 @@ def _table_rows(task: isoxml.TaskModel, plans: list[Plan], spec_new: dict[int, f
     return {"mode": "bands", "rows": rows}
 
 
-def _run(task: isoxml.TaskModel, cfg: HwConfig, cat: Catalog) -> dict[str, Any]:
+def _run(task: isoxml.TaskModel, cfg: HwConfig, cat: Catalog, rates: Optional[dict[int, float]] = None) -> dict[str, Any]:
     chain = resolve_chain(cfg, cat)
-    cin = _classes_in(task)
-    plans = evaluate(cin, cfg, chain, cat, variable_file=_is_variable(task))
+    cin = _classes_in(task, rates)
+    plans = evaluate(cin, cfg, chain, cat, variable_file=_is_variable(task, rates))
     return {"chain": chain, "cin": cin, "plans": plans, "kpi": kpis(cin, plans)}
 
 
@@ -195,7 +235,8 @@ def evaluate_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
     probs = cfg.problems()
     if probs:
         raise ServiceError(" ".join(probs))
-    cur = _run(task, cfg, cat)
+    rates = _rates(body)
+    cur = _run(task, cfg, cat, rates)
     chain, cin, plans = cur["chain"], cur["cin"], cur["plans"]
 
     spec = specialise(cin, plans, cfg, chain, cat)
@@ -218,12 +259,12 @@ def evaluate_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
     ref_cmp = None
     if body.get("reference"):
         rcfg = HwConfig.from_dict(body["reference"])
-        ref = _run(task, rcfg, cat)
+        ref = _run(task, rcfg, cat, rates)
         ref_cmp = compare(cin, ref["plans"], plans)
         out["reference"] = {"plans": _columns(ref["plans"]), "kpi": ref["kpi"], "cmp": "".join({"better": "b", "worse": "w", "same": "s"}[c] for c in ref_cmp),
                             "chain": {"blockers": ref["chain"].blockers, "nozzles": [n.code for n in ref["chain"].nozzles]},
                             "envelope": envelope(rcfg, ref["chain"])}
-    out["table"] = _table_rows(task, plans, {i: spec.new_rate[i] for i in spec.changed}, ref_cmp)
+    out["table"] = _table_rows(task, plans, {i: spec.new_rate[i] for i in spec.changed}, ref_cmp, cin if rates is not None else None)
     if body.get("suggest") and not chain.blockers:
         out["suggestions"] = suggest(cin, cfg, chain, cat)
     det = body.get("detail")
@@ -258,17 +299,27 @@ def build_export(session: Session, body: dict[str, Any]) -> tuple[bytes, str, di
     summary: list[dict[str, Any]] = []
     total_changed = 0
     expected: dict[int, dict[int, float]] = {}
+    rates = _rates(body)
+    try:
+        rates_task = int(body.get("task") or 0)
+    except (TypeError, ValueError):
+        rates_task = 0
     for task in rx.tasks:
-        cin = _classes_in(task)
+        tr = rates if (rates is not None and task.index == rates_task) else None
+        cin = _classes_in(task, tr)
         if not any(c.rate and c.rate > 0 for c in cin):
             continue
-        plans = evaluate(cin, cfg, chain, cat, variable_file=_is_variable(task))
+        plans = evaluate(cin, cfg, chain, cat, variable_file=_is_variable(task, tr))
         spec = specialise(cin, plans, cfg, chain, cat)
-        counts = isoxml.apply_rates(rx, task, {i: spec.new_rate[i] for i in spec.changed})
+        # rateo finale per classe: volume del ricettario, poi l'eventuale adattamento all'hardware
+        final = {c.idx: (spec.new_rate[c.idx] if c.idx in spec.changed else c.rate) for c in cin if c.rate and c.rate > 0}
+        orig = {k.idx: k.rate for k in task.classes}
+        new_map = {i: r for i, r in final.items() if orig.get(i) is None or abs(r - orig[i]) > 0.005}
+        counts = isoxml.apply_rates(rx, task, new_map)
         isoxml.add_note(task, _note_text(spec.strategy, cfg))
-        total_changed += len(spec.changed)
-        expected[task.index] = {i: spec.new_rate[i] for i in spec.changed}
-        summary.append({"task": task.name, "strategy": spec.strategy, "changed_classes": len(spec.changed), **counts,
+        total_changed += len(new_map)
+        expected[task.index] = new_map
+        summary.append({"task": task.name, "strategy": spec.strategy, "changed_classes": len(new_map), **counts,
                         "kpi_before": kpis(cin, plans), "kpi_after": spec.kpi_after, "agronomic": spec.agronomic})
     if total_changed and not body.get("approve"):
         raise ServiceError("La specializzazione modifica dei ratei: controlla l'anteprima e conferma prima di scaricare.")
@@ -298,7 +349,95 @@ def build_report(session: Session, body: dict[str, Any]) -> bytes:
     cat = load_catalog()
     cfg = HwConfig.from_dict(body.get("config") or {})
     chain = resolve_chain(cfg, cat)
-    cin = _classes_in(task)
-    plans = evaluate(cin, cfg, chain, cat, variable_file=_is_variable(task))
+    rates = _rates(body)
+    cin = _classes_in(task, rates)
+    plans = evaluate(cin, cfg, chain, cat, variable_file=_is_variable(task, rates))
     spec = specialise(cin, plans, cfg, chain, cat)
     return render_report(session, task, cfg, chain, cat, cin, plans, spec).encode("utf-8")
+
+
+# --------------------------------------------------------------------------- pipeline: zone → ricettari → hardware → ARAG → documenti
+
+def _cfg(body: dict[str, Any]) -> Optional[HwConfig]:
+    if not body.get("config"):
+        return None
+    cfg = HwConfig.from_dict(body["config"])
+    probs = cfg.problems()
+    if probs:
+        raise ServiceError(" ".join(probs))
+    return cfg
+
+
+def zoning_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
+    task = _task(session, body.get("task"))
+    return zoning.analyse(session.rx, task, session.origin)
+
+
+def _recipes(session: Session, body: dict[str, Any], task: isoxml.TaskModel) -> dict[str, Any]:
+    z = zoning.analyse(session.rx, task, session.origin)
+    products = body.get("products") or []
+    if not isinstance(products, list) or len(products) > 6:
+        raise ServiceError("Elenco prodotti non valido (massimo 6).")
+    try:
+        return recipes.build(task, z, [p for p in products if isinstance(p, dict)], body.get("options") or {}, _cfg(body), load_catalog())
+    except recipes.RecipeError as exc:
+        raise ServiceError(str(exc))
+
+
+def recipes_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
+    return _recipes(session, body, _task(session, body.get("task")))
+
+
+def _selected(session: Session, body: dict[str, Any], task: isoxml.TaskModel) -> tuple[dict[str, Any], dict[str, Any]]:
+    rs = _recipes(session, body, task)
+    rec = next((r for r in rs["recipes"] if r["id"] == body.get("recipe_id")), None)
+    if rec is None:
+        raise ServiceError("Scegli prima un ricettario.")
+    return rs, rec
+
+
+def match_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
+    task = _task(session, body.get("task"))
+    cfg = _cfg(body)
+    if cfg is None:
+        raise ServiceError("Configura l'hardware.")
+    _, rec = _selected(session, body, task)
+    rates = recipes.recipe_rates(task, rec)
+    out = matching.match(task, cfg, load_catalog(), rates)
+    out.update({"ok": True, "recipe_id": rec["id"], "rates": {str(k): v for k, v in rates.items()}})
+    return out
+
+
+def recommend_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
+    task = _task(session, body.get("task"))
+    cfg = _cfg(body)
+    if cfg is None:
+        raise ServiceError("Configura l'hardware.")
+    _, rec = _selected(session, body, task)
+    return matching.recommend(task, cfg, load_catalog(), recipes.recipe_rates(task, rec))
+
+
+def dossier_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
+    task = _task(session, body.get("task"))
+    cfg = _cfg(body)
+    z = zoning.analyse(session.rx, task, session.origin)
+    rs, rec, m = None, None, None
+    if body.get("recipe_id"):
+        rs, rec = _selected(session, body, task)
+        if cfg is not None:
+            m = matching.match(task, cfg, load_catalog(), recipes.recipe_rates(task, rec))
+    names = resolve_chain(cfg, load_catalog()).names if cfg is not None else {}
+    return dossier.build(summary=isoxml.public_summary(session.rx), task=task, zoning=z, recipes=rs,
+                         recipe_id=rec["id"] if rec else "", match=m, cfg_names=names, body=body)
+
+
+def dossier_file(session: Session, body: dict[str, Any]) -> tuple[bytes, str, str]:
+    d = dossier_payload(session, body)
+    base = dossier.safe_name(os.path.splitext(session.filename)[0])
+    if body.get("format") == "json":
+        return dossier.to_json(d), "application/json; charset=utf-8", f"{base}_scheda_trattamento.json"
+    return dossier.render_html(d).encode("utf-8"), "text/html; charset=utf-8", f"{base}_scheda_trattamento.html"
+
+
+def satellite_status() -> dict[str, Any]:
+    return {"ok": True, **satellite.status()}
