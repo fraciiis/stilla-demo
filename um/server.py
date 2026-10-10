@@ -366,8 +366,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     if sys.version_info < (3, 9):
         print("Serve Python 3.9 o più recente (https://www.python.org/downloads/).")
         return 1
-    host = os.environ.get("STILLA_HOST") or os.environ.get("ULTIMO_METRO_HOST") or "0.0.0.0"
-    port = _env_int("STILLA_PORT", "ULTIMO_METRO_PORT", "PORT") or DEFAULT_PORT
+    host = os.environ.get("STILLA_HOST", "0.0.0.0")
+    port = _env_int("STILLA_PORT", "PORT") or DEFAULT_PORT
     open_browser = not (os.environ.get("NO_BROWSER") or "--no-browser" in args)
     if "--local" in args:
         host = "127.0.0.1"

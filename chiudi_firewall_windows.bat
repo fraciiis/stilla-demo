@@ -10,6 +10,5 @@ if errorlevel 1 (
   exit /b 1
 )
 netsh advfirewall firewall delete rule name="Stilla (porta 8765)"
-netsh advfirewall firewall delete rule name="Ultimo Metro (porta 8765)" >nul 2>&1
 echo.
 pause
