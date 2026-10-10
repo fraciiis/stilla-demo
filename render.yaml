@@ -1,0 +1,16 @@
+# Pubblicazione su Render (piano gratuito): Dashboard → New → Blueprint → questo repository e questo ramo.
+# Nessuna dipendenza da installare: solo libreria standard Python.
+services:
+  - type: web
+    name: ultimo-metro-demo
+    runtime: python
+    plan: free
+    branch: claude/esecuzione-progetto-1q3bi4
+    buildCommand: python3 --version
+    startCommand: python3 app.py --no-browser
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: NO_BROWSER
+        value: "1"

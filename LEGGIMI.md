@@ -12,6 +12,21 @@ Dalla mappa del campo al trattamento documentato, in sei fasi: carichi la prescr
 
 Si apre il browser su `http://localhost:8765/`. Nella finestra nera compaiono anche gli indirizzi per gli amici.
 
+## Pubblicarla online (un link da aprire con qualunque browser)
+
+Il progetto è pronto per i servizi che eseguono app Python o container; non serve installare dipendenze.
+
+- **Render, piano gratuito** (consigliato): crea un account su render.com, poi apri
+  `https://render.com/deploy?repo=https://github.com/fraciiis/stilla-demo/tree/claude/esecuzione-progetto-1q3bi4`
+  (oppure Dashboard → New → Blueprint → questo repository). La configurazione è in `render.yaml`. Dopo 2–3 minuti
+  ricevi un indirizzo `https://….onrender.com` da condividere. Nel piano gratuito il servizio si addormenta dopo
+  ~15 minuti senza visite: la prima apertura successiva impiega circa un minuto.
+- **Altri servizi con container** (Fly.io, Railway, Koyeb, Google Cloud Run): usano il `Dockerfile`; l'app legge la porta da `PORT`.
+- **Solo per una presentazione dal tuo computer**: avvia l'app e condividi l'indirizzo «per gli amici» (stessa rete Wi-Fi),
+  oppure crea un link temporaneo con un tunnel (es. `cloudflared tunnel --url http://localhost:8765`).
+
+Chi apre il link vede l'app completa; le sessioni vivono nella memoria del server e si perdono a ogni riavvio.
+
 ## Prova veloce (modalità dimostrativa)
 
 Nella pagina iniziale scegli uno dei 4 **campi dimostrativi** (vigneto, mais, frumento, pomodoro): vedi ortofoto, NDVI e, per il mais, la mappa delle infestanti; scegli l'acquisizione da drone o Sentinel-2 (puoi cercare altre scene) e avvia il processo. Nella fase Ricettari aggiungi un prodotto dalla **banca dati etichette DEMO**. Campi, immagini, prodotti, efficacia, sensori e valvole di sezione marcati DEMO sono **inventati ma verosimili** e servono a mostrare il funzionamento (dettagli in `docs/PIPELINE.md`).
