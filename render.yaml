@@ -2,7 +2,7 @@
 # Nessuna dipendenza da installare: solo libreria standard Python.
 services:
   - type: web
-    name: ultimo-metro-demo
+    name: stilla-demo
     runtime: python
     plan: free
     branch: claude/esecuzione-progetto-1q3bi4

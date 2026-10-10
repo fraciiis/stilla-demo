@@ -227,7 +227,7 @@ def build_prescription(fid: str, params: dict[str, Any]) -> tuple[bytes, dict[st
     bnd = "".join(f'<PNT A="2" C="{lat:.7f}" D="{lon:.7f}"/>' for lon, lat in ring + [ring[0]])
     area_m2 = f["area_ha"] * 10000
     xml = ['<?xml version="1.0" encoding="UTF-8"?>\n<ISO11783_TaskData VersionMajor="4" VersionMinor="3" '
-           'ManagementSoftwareManufacturer="Ultimo Metro DEMO (mappa simulata)" ManagementSoftwareVersion="1" DataTransferOrigin="1">',
+           'ManagementSoftwareManufacturer="Stilla DEMO (mappa simulata)" ManagementSoftwareVersion="1" DataTransferOrigin="1">',
            '<CTR A="CTR1" B="Cliente dimostrativo"/><FRM A="FRM1" B="Azienda agricola dimostrativa" I="CTR1"/>',
            f'<CTP A="CTP1" B={quoteattr(crop)}/>',
            f'<PFD A="PFD1" B="DEMO" C={quoteattr(f["name"])} D="{int(area_m2)}" E="CTR1" F="FRM1" G="CTP1"><PLN A="1" B="Confine"><LSG A="1">{bnd}</LSG></PLN></PFD>',

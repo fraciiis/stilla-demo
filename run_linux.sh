@@ -1,5 +1,5 @@
 #!/bin/bash
-# Avvia Ultimo Metro su Linux:  ./run_linux.sh
+# Avvia Stilla su Linux:  ./run_linux.sh
 cd "$(dirname "$0")" || exit 1
 PY=""
 for c in python3 python; do

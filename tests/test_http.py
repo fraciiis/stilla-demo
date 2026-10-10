@@ -64,7 +64,7 @@ class Basics(ServerCase):
         st, h, body = c.req("GET", "/")
         self.assertEqual(st, 200)
         self.assertIn("text/html", h["Content-Type"])
-        self.assertIn(b"Ultimo Metro", body)
+        self.assertIn(b"Stilla", body)
         self.assertIn("javascript", c.req("GET", "/js/main.js")[1]["Content-Type"])
         self.assertEqual(c.req("GET", "/fonts/inter-latin-400-normal.woff2")[1]["Content-Type"], "font/woff2")
         self.assertEqual(c.req("GET", "/data/arag_catalog.json")[0], 200)

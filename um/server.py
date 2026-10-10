@@ -56,7 +56,7 @@ class UmServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = f"UltimoMetro/{__version__}"
+    server_version = f"Stilla/{__version__}"
     protocol_version = "HTTP/1.1"
 
     # ---- utilità ---------------------------------------------------------------------------------
@@ -340,7 +340,7 @@ def make_server(host: str, port: int, tries: int = 25) -> UmServer:
 def banner(server: UmServer) -> str:
     port = server.server_address[1]
     host = server.server_address[0]
-    lines = ["", "  ULTIMO METRO  ·  server avviato", "  " + "─" * 58,
+    lines = ["", "  STILLA  ·  server avviato", "  " + "─" * 58,
              f"  Su questo computer:   http://localhost:{port}/"]
     if host in ("0.0.0.0", "::", ""):
         addrs = netinfo.lan_addresses()
@@ -366,8 +366,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     if sys.version_info < (3, 9):
         print("Serve Python 3.9 o più recente (https://www.python.org/downloads/).")
         return 1
-    host = os.environ.get("ULTIMO_METRO_HOST", "0.0.0.0")
-    port = _env_int("ULTIMO_METRO_PORT", "PORT") or DEFAULT_PORT
+    host = os.environ.get("STILLA_HOST") or os.environ.get("ULTIMO_METRO_HOST") or "0.0.0.0"
+    port = _env_int("STILLA_PORT", "ULTIMO_METRO_PORT", "PORT") or DEFAULT_PORT
     open_browser = not (os.environ.get("NO_BROWSER") or "--no-browser" in args)
     if "--local" in args:
         host = "127.0.0.1"

@@ -815,7 +815,7 @@ def add_note(task: TaskModel, text: str) -> None:
     """Aggiunge (o aggiorna) un unico commento libero CAN al task, max 32 caratteri."""
     text = text[:32]
     for can in children(task.element, "CAN"):
-        if attr(can, "C").startswith("UM "):
+        if attr(can, "C").startswith(("STILLA ", "UM ")):          # "UM " = file esportati col nome precedente
             can.set("C", text)
             return
     ns = task.element.tag.split("}")[0] + "}" if task.element.tag.startswith("{") else ""

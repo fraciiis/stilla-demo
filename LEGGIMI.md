@@ -1,4 +1,4 @@
-# Ultimo Metro
+# Stilla
 
 Dalla mappa del campo al trattamento documentato, in sei fasi: carichi la prescrizione ISOXML o una mappa indice GeoJSON, vedi le **zone di intervento**, confronti **tre ricettari** calcolati sui dati di etichetta, verifichi la tua **attrezzatura Nordson/ARAG**, vedi i **componenti ARAG** che servono davvero e prepari la **scheda del trattamento** (stampabile, JSON) insieme al file ISOXML per il terminale. Architettura e limiti: `docs/PIPELINE.md`.
 
@@ -76,7 +76,7 @@ Il riepilogo sotto il nome del file mostra in ogni momento stato del trattamento
 
 ## Per sviluppatori
 
-- Solo libreria standard Python, nessuna dipendenza. `python3 app.py [--port=9000] [--local] [--no-browser]`; variabili `PORT`, `ULTIMO_METRO_HOST`, `NO_BROWSER`.
+- Solo libreria standard Python, nessuna dipendenza. `python3 app.py [--port=9000] [--local] [--no-browser]`; variabili `PORT`, `STILLA_HOST`, `NO_BROWSER`.
 - `python3 -m unittest discover -s tests -t .` (80 test: lettura ISOXML, idraulica, catene, specializzazione, server, sessioni, caricamenti ostili, zone, ricettari, compatibilità, proposte ARAG, documenti, GeoJSON, shapefile/UTM, modalità dimostrativa).
 - `python3 tools/make_demo_fields.py` rigenera i campi dimostrativi (`static/demo/fields.json`).
 - `python3 tools/make_geojson_example.py` rigenera la mappa NDVI di prova (`static/data/esempio_ndvi.geojson`, dati sintetici).

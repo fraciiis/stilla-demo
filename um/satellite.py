@@ -30,10 +30,10 @@ DEMO_PROVIDER = "Simulatore DEMO (Sentinel-2 L2A e rilievi drone)"
 
 
 def status() -> dict[str, Any]:
-    name = os.environ.get("ULTIMO_METRO_SAT_PROVIDER", "")
+    name = os.environ.get("STILLA_SAT_PROVIDER") or os.environ.get("ULTIMO_METRO_SAT_PROVIDER", "")
     if name and name in PROVIDERS:
         return {"configured": True, "provider": name, "demo": False}
     # senza un fornitore reale l'app usa il simulatore (um/demo.py): catalogo di scene e mappe inventate
     return {"configured": True, "provider": DEMO_PROVIDER, "demo": True,
             "message": "Acquisizione simulata: scene Sentinel-2 e rilievi drone dimostrativi (dati inventati). "
-                       "Un fornitore reale si collega impostando ULTIMO_METRO_SAT_PROVIDER."}
+                       "Un fornitore reale si collega impostando STILLA_SAT_PROVIDER."}

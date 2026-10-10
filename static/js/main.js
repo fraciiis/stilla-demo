@@ -1,4 +1,4 @@
-// Ultimo Metro · coordinamento della pipeline:
+// Stilla · coordinamento della pipeline:
 // mappa e zone → tre ricettari → scelta → hardware → componenti ARAG → documentazione.
 
 import { $, $$, esc, fmt, debounce, toast, STATUS, STATUS_BY_KEY } from "./util.js";

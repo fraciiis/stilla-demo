@@ -229,7 +229,7 @@ def build(raw: bytes, filename: str, params: dict[str, Any]) -> tuple[bytes, dic
     crop_attr = ' G="CTP1"' if crop else ""
 
     body = ['<?xml version="1.0" encoding="UTF-8"?>\n<ISO11783_TaskData VersionMajor="4" VersionMinor="3" '
-            'ManagementSoftwareManufacturer="Ultimo Metro (da mappa indice GeoJSON)" ManagementSoftwareVersion="1" DataTransferOrigin="1">',
+            'ManagementSoftwareManufacturer="Stilla (da mappa indice GeoJSON)" ManagementSoftwareVersion="1" DataTransferOrigin="1">',
             '<CTR A="CTR1" B="Cliente"/><FRM A="FRM1" B="Azienda" I="CTR1"/>',
             f'<CTP A="CTP1" B="{_esc(crop)}"/>' if crop else "",
             f'<PFD A="PFD1" B="GEO" C="{_esc(field_name)}" D="{int(round(area_b))}" E="CTR1" F="FRM1"{crop_attr}>{_pln(b_rings, 1, "Confine")}</PFD>',

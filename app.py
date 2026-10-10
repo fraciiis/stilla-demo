@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ultimo Metro · punto di avvio.  python3 app.py  (oppure i file run_*.bat / .command / .sh)"""
+"""Stilla · punto di avvio.  python3 app.py  (oppure i file run_*.bat / .command / .sh)"""
 
 import os
 import sys

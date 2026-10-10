@@ -94,7 +94,7 @@ def render_report(session: Any, task: Any, cfg: HwConfig, chain: Chain, cat: Cat
 
     return f"""<!doctype html>
 <html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ultimo Metro · piano di lavoro</title><style>{CSS}</style></head><body><main>
+<title>Stilla · piano di lavoro</title><style>{CSS}</style></head><body><main>
 <header><h1>Piano di lavoro per l'hardware Nordson</h1>
 <div class="sub">{escape(task.name)} · campo {escape(task.field_name or '—')} · file {escape(session.filename)} · {today}</div></header>
 

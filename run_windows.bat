@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Ultimo Metro
+title Stilla
 set "PY="
 for %%C in ("py -3" "python" "python3") do (
   if not defined PY (

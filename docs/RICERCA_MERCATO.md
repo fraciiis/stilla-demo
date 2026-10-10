@@ -1,4 +1,4 @@
-# Ultimo Metro — ricerca di mercato preliminare
+# Stilla — ricerca di mercato preliminare
 
 **Data della ricognizione: 9 ottobre 2026.** Ricerca desk limitata a pagine pubbliche ufficiali Nordson/ARAG e xFarm. I codici sotto sono esempi per un prototipo: verificare sempre revisione, mercato, scheda tecnica, configurazione e disponibilità con il produttore. Questa nota non è una matrice certificata di compatibilità.
 
@@ -39,7 +39,7 @@ Fonti:
 
 **Conseguenza per il pitch:** non è credibile differenziarsi soltanto con “carichiamo ISOXML, vediamo la mappa, controlliamo il meteo e registriamo il trattamento”. Una parte importante di questo workflow è già descritta pubblicamente da xFarm. Non abbiamo prove per affermare che xFarm sia incapace di usare la configurazione specifica di una macchina: va chiesto e provato, non presunto.
 
-## 3. Ipotesi di differenziazione di Ultimo Metro
+## 3. Ipotesi di differenziazione di Stilla
 
 La proposta più forte è diventare un **pre-flight checker, o gemello digitale tecnico della macchina**, che riceve una prescrizione già approvata e la confronta con la precisa configurazione installata sull'irroratrice.
 
@@ -49,7 +49,7 @@ La proposta più forte è diventare un **pre-flight checker, o gemello digitale 
 4. **Piano di correzione operativo.** Suggerisce azioni approvate/possibili — per esempio verificare velocità, pressione, ugello, configurazione o pianificare un passaggio distinto — solo quando la matrice tecnica documenta la conseguenza.
 5. **Dopo il lavoro.** Se il controller espone dati di esecuzione, confronta target ed eseguito e crea un rapporto tracciabile. In fase di demo il log simulato deve essere dichiarato come simulato.
 
-In breve: **xFarm pianifica la prescrizione; Ultimo Metro verifica se la macchina ARAG effettivamente configurata può eseguirla e documenta le eccezioni prima di entrare in campo.** Questa è l'ipotesi di differenziazione da verificare con i partner.
+In breve: **xFarm pianifica la prescrizione; Stilla verifica se la macchina ARAG effettivamente configurata può eseguirla e documenta le eccezioni prima di entrare in campo.** Questa è l'ipotesi di differenziazione da verificare con i partner.
 
 ## 4. Quali input manuali servono davvero
 

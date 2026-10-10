@@ -91,7 +91,7 @@ class RoundTrip(unittest.TestCase):
 
     def test_note_is_short(self):
         rx = analyse("01_zone_poligonali_pomodoro.zip")
-        isoxml.add_note(rx.tasks[0], "UM NORDSON VRA AFC11002 " + "x" * 40)
+        isoxml.add_note(rx.tasks[0], "STILLA NORDSON VRA AFC11002 " + "x" * 40)
         xml = isoxml.serialize(rx)[rx.pkg.main.path].decode("utf-8")
         import re
         notes = re.findall(r'<CAN [^>]*C="([^"]*)"', xml)

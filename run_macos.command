@@ -1,5 +1,5 @@
 #!/bin/bash
-# Doppio clic per avviare Ultimo Metro su macOS (equivalente di run_windows.bat).
+# Doppio clic per avviare Stilla su macOS (equivalente di run_windows.bat).
 cd "$(dirname "$0")" || exit 1
 clear
 PY=""

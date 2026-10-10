@@ -59,7 +59,7 @@ Questi passi, le chiamate e i loro corpi sono il riferimento da non cambiare.
 | A11 | Token | colori scritti a mano in JS (`util.js` STATUS/DIFF, `ui.js`, `map.js`, `extras.js`) e nel CSS (`#8cbfe3`, `#b8d9ef`, `#fff7e0`…) | colori |
 | A12 | Tipografia | dimensioni sparse (`.8rem`, `.85rem`, `.88rem`, `.9rem`, `.92rem`, `.95rem`…), nessuna scala a token | tipografia |
 | A13 | Touch | misurati a 375 px: `.btn.sm` 34 px di altezza («Cambia file», «Vedi sulla mappa»…), ✕ ugello 37×34, viste della mappa 36, «Condividi» 38, checkbox 20×20: sotto i 44 px. Schede (46) e gruppi hardware (49) sono già a norma | 4 |
-| A14 | Header mobile | a 375 px «Ultimo Metro» va a capo su due righe | 5 |
+| A14 | Header mobile | a 375 px il nome del prodotto va a capo su due righe | 5 |
 | A15 | Microcopy | «+ Aggiungi un secondo ugello» resta tale anche col secondo già montato; doppio spazio in «Scarica ISOXML  per il mio hardware» | 2 |
 
 ### Nota critica sul blu

@@ -282,7 +282,7 @@ def evaluate_payload(session: Session, body: dict[str, Any]) -> dict[str, Any]:
 
 def _note_text(strategy: str, cfg: HwConfig) -> str:
     noz = cfg.nozzles[0] if cfg.nozzles else "ND"
-    return f"UM NORDSON {'VRA' if strategy == 'variable' else 'UNI'} {noz}"[:32]
+    return f"STILLA NORDSON {'VRA' if strategy == 'variable' else 'UNI'} {noz}"[:32]
 
 
 def build_export(session: Session, body: dict[str, Any]) -> tuple[bytes, str, dict[str, Any]]:
