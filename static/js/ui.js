@@ -3,42 +3,81 @@
 import { $, esc, fmt, STATUS, STATUS_BY_KEY, DIFF, HATCH, DIFF_HATCH, badge, rampColor, tok } from "./util.js";
 
 // ---------- colori per vista ----------
+// Simboli di stato usati anche nelle etichette sulla mappa (stessi dei badge)
+const SYM = { o: "✓", a: "≈", u: "▼", v: "▲", x: "≠" };
+const treated = (c) => c.rate && c.rate > 0;
+
+// Restituisce un colore per classe; l'array porta con sé (solo aspetto, li legge la mappa):
+// hatch = tratteggio per classe · labels = etichetta per classe · smooth = sfumare le celle
 export function colorsFor(view, result, task) {
   const n = task.classes.length;
+  const lab = (fn) => task.classes.map((c, i) => (treated(c) ? fn(c, i) : null));
   if (view === "rx") {
     const pos = task.classes.map((c) => c.rate).filter((r) => r && r > 0);
     const lo = Math.min(...pos), hi = Math.max(...pos);
-    return task.classes.map((c) => (c.rate && c.rate > 0 ? rampColor(hi > lo ? (c.rate - lo) / (hi - lo) : 0.6) : tok("--map-none")));
+    const out = task.classes.map((c) => (treated(c) ? rampColor(hi > lo ? (c.rate - lo) / (hi - lo) : 0.6) : tok("--map-none")));
+    out.labels = lab((c) => ({ t: fmt(c.rate, 0), u: "L/ha" }));
+    out.smooth = !!(task.grid && task.grid.type === 2);
+    return out;
   }
   if (!result) return Array(n).fill(tok("--map-off"));
-  // l'array dei colori porta con sé il tratteggio per classe (solo aspetto: lo legge la mappa)
   const withHatch = (colors, codes, hatchMap) => { colors.hatch = Array.from({ length: n }, (_, i) => hatchMap[codes[i]] || null); return colors; };
   const flat = (codes, map) => withHatch(Array.from({ length: n }, (_, i) => (map[codes[i]] || map.n || {}).color || tok("--map-off")), codes, HATCH);
-  if (view === "hw") return flat(result.plans.s, STATUS);
-  if (view === "after") return flat(result.specialisation.s_after, STATUS);
+  if (view === "hw") {
+    const out = flat(result.plans.s, STATUS);
+    const dl = result.plans.delivered;
+    out.labels = lab((c, i) => ({ s: SYM[result.plans.s[i]] || "", t: fmt(dl[i] !== null && dl[i] !== undefined ? dl[i] : c.rate, 0), u: "L/ha" }));
+    return out;
+  }
+  if (view === "after") {
+    const sp = result.specialisation, out = flat(sp.s_after, STATUS);
+    out.labels = lab((c, i) => ({ s: SYM[sp.s_after[i]] || "", t: fmt(sp.new_rate[i] || c.rate, 0), u: "L/ha" }));
+    return out;
+  }
   if (view === "diff" && result.reference) {
     const cmp = result.reference.cmp;
-    const treated = (i) => task.classes[i].rate && task.classes[i].rate > 0;
-    const colors = Array.from({ length: n }, (_, i) => (treated(i) ? DIFF[cmp[i]].color : tok("--map-none")));
-    return withHatch(colors, Array.from({ length: n }, (_, i) => (treated(i) ? cmp[i] : "")), DIFF_HATCH);
+    const tr = (i) => treated(task.classes[i]);
+    const colors = Array.from({ length: n }, (_, i) => (tr(i) ? DIFF[cmp[i]].color : tok("--map-none")));
+    colors.labels = lab((c, i) => (cmp[i] === "b" ? { s: "↑", t: "meglio" } : cmp[i] === "w" ? { s: "↓", t: "peggio" } : null));
+    return withHatch(colors, Array.from({ length: n }, (_, i) => (tr(i) ? cmp[i] : "")), DIFF_HATCH);
   }
   return Array(n).fill(tok("--map-off"));
 }
 
+// quota della superficie trattata (o delle zone, se manca la superficie) per codice di stato:
+// stessa base dei KPI calcolati dal server, così legenda e indicatori dicono gli stessi numeri
+function shares(task, codes) {
+  const byArea = task.classes.every((c) => c.area_ha !== null && c.area_ha !== undefined);
+  const w = task.classes.map((c) => (byArea ? c.area_ha : 1));
+  const tot = task.classes.reduce((a, c, i) => a + (treated(c) ? w[i] : 0), 0) || 1;
+  const out = {};
+  task.classes.forEach((c, i) => { const k = codes(i); if (k && treated(c)) out[k] = (out[k] || 0) + (w[i] / tot) * 100; });
+  return out;
+}
+const share = (v) => (v === undefined ? "" : ` <b>${v < 1 && v > 0 ? "&lt; 1" : fmt(v, 0)} %</b>`);
+
 export function legendHtml(view, task, result) {
-  const sw = (c, t, h = null) => `<span><i${h ? ` class="h-${h}"` : ""} style="background-color:${c}"></i>${esc(t)}</span>`;
+  const sw = (c, t, h = null, extra = "") => `<span><i${h ? ` class="h-${h}"` : ""} style="background-color:${c}"></i>${esc(t)}${extra}</span>`;
   if (view === "rx") {
     const pos = task.classes.map((c) => c.rate).filter((r) => r && r > 0);
     if (!pos.length) return sw(tok("--map-none"), "Nessun trattamento");
     const lo = Math.min(...pos), hi = Math.max(...pos);
     const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => rampColor(t)).join(",");
-    return `<span>${fmt(lo, 0)} L/ha</span><span class="ramp" style="background:linear-gradient(90deg,${stops})"></span><span>${fmt(hi, 0)} L/ha</span>` +
+    const mean = task.rate_mean ? ` <span class="mut">· media ${fmt(task.rate_mean, 0)} L/ha</span>` : "";
+    return `<span>${fmt(lo, 0)} L/ha</span><span class="ramp" style="background:linear-gradient(90deg,${stops})"></span><span>${fmt(hi, 0)} L/ha${mean}</span>` +
       (task.classes.some((c) => c.rate === 0) ? sw(tok("--map-none"), "non trattare") : "");
   }
-  if (view === "diff") return sw(DIFF.b.color, DIFF.b.name) + sw(DIFF.w.color, DIFF.w.name, DIFF_HATCH.w) + sw(DIFF.s.color, DIFF.s.name) + sw(tok("--map-none"), "non trattare");
-  const used = new Set((view === "after" ? result.specialisation.s_after : result.plans.s).split(""));
+  if (view === "diff") {
+    const cmp = result.reference.cmp;
+    const sh = shares(task, (i) => (treated(task.classes[i]) ? cmp[i] : "-"));
+    return sw(DIFF.b.color, DIFF.b.name, null, share(sh.b)) + sw(DIFF.w.color, DIFF.w.name, DIFF_HATCH.w, share(sh.w)) +
+      sw(DIFF.s.color, DIFF.s.name, null, share(sh.s)) + (task.classes.some((c) => !treated(c)) ? sw(tok("--map-none"), "non trattare") : "");
+  }
+  const codes = view === "after" ? result.specialisation.s_after : result.plans.s;
+  const sh = shares(task, (i) => codes[i]);
+  const used = new Set(codes.split(""));
   const order = ["o", "a", "u", "v", "x", "f", "n"];
-  return order.filter((k) => used.has(k)).map((k) => sw(STATUS[k].color, STATUS[k].name, HATCH[k])).join("");
+  return order.filter((k) => used.has(k)).map((k) => sw(STATUS[k].color, STATUS[k].name, HATCH[k], share(sh[k]))).join("");
 }
 
 // ---------- esito ----------

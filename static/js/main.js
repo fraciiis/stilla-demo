@@ -28,6 +28,7 @@ function setStep(n) {
     const e = $(`#st${i}`);
     e.classList.toggle("on", i === n);
     e.classList.toggle("done", i < n);
+    if (i === n) e.setAttribute("aria-current", "step"); else e.removeAttribute("aria-current");
   });
 }
 
@@ -295,7 +296,8 @@ function onMapHover(k, e) {
   if (k === null || !r || !e) { tip.hidden = true; return; }
   const c = task().classes[k], st = STATUS[r.plans.s[k]] || STATUS.n;
   const rate = c.rate && c.rate > 0;
-  tip.innerHTML = `<b>${esc(c.label)}</b>${rate ? `Richiesti ${fmt(c.rate, 0)} L/ha` : "Non trattare"}<br>${rate ? `${esc(st.name)}${r.plans.delivered[k] !== null ? ` · erogati ${fmt(r.plans.delivered[k], 0)} L/ha` : ""}` : ""}${r.specialisation.new_rate[k] ? `<br>Nel file: ${fmt(r.specialisation.new_rate[k], 0)} L/ha` : ""}`;
+  const after = STATUS[r.specialisation.s_after[k]] || STATUS.n;
+  tip.innerHTML = `<b>${esc(c.label)}</b>${rate ? `Richiesti ${fmt(c.rate, 0)} L/ha` : "Non trattare"}<br>${rate ? `Sul tuo hardware: ${esc(st.name.toLowerCase())}${r.plans.delivered[k] !== null ? ` · erogati ${fmt(r.plans.delivered[k], 0)} L/ha` : ""}` : ""}${r.specialisation.new_rate[k] ? `<br>Nel file specializzato: ${fmt(r.specialisation.new_rate[k], 0)} L/ha · ${esc(after.name.toLowerCase())}` : ""}`;
   const wrap = $(".mapwrap").getBoundingClientRect();
   tip.hidden = false;
   let x = e.clientX - wrap.left + 14, y = e.clientY - wrap.top + 14;

@@ -37,6 +37,11 @@ export class FieldMap {
     this._grid = null;
     this._off = null;
     this._dirty = true;
+    this.labels = [];
+    this.smooth = false;
+    this._fadeFrom = null;
+    this._colorKey = undefined;
+    this._reduced = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
     this.dpr = Math.max(1, window.devicePixelRatio || 1);
     new ResizeObserver(() => this.resize()).observe(canvas);
     canvas.addEventListener("mousemove", (e) => this._move(e));
@@ -53,12 +58,51 @@ export class FieldMap {
       const g = this.task.grid;
       this._grid = { ...g, cls: b64ToU16(g.cells) };
     }
+    this._gridPos = null;
+    this._colorKey = undefined;
+    this._fadeFrom = null;
     this._bounds();
     this._dirty = true;
     this.draw();
   }
 
-  setColors(colors) { this.colors = colors || []; this.hatch = (colors && colors.hatch) || []; this._dirty = true; this.draw(); }
+  // colors: un colore per classe; può portare con sé hatch, labels e smooth (solo aspetto)
+  setColors(colors) {
+    colors = colors || [];
+    const labels = colors.labels || [];
+    const key = colors.join("|") + "#" + labels.map((l) => (l ? l.t + l.s : "")).join("|") + (colors.smooth ? "~" : "");
+    const fade = this._colorKey !== undefined && key !== this._colorKey && this.proj && !this._reduced.matches;
+    const prev = fade ? this._snapshot() : null;
+    this._colorKey = key;
+    this.colors = colors;
+    this.hatch = colors.hatch || [];
+    this.labels = labels;
+    this.smooth = !!colors.smooth;
+    this._dirty = true;
+    if (prev) this._startFade(prev); else this.draw();
+  }
+
+  // ---- transizione morbida fra due stati della mappa ----
+  _snapshot() {
+    const c = document.createElement("canvas");
+    c.width = this.cv.width; c.height = this.cv.height;
+    c.getContext("2d").drawImage(this.cv, 0, 0);
+    return c;
+  }
+
+  _startFade(prev) {
+    this._fadeFrom = prev;
+    this._fadeT0 = performance.now();
+    const D = 260;
+    const step = () => {
+      if (this._fadeFrom !== prev) return;
+      const t = (performance.now() - this._fadeT0) / D;
+      if (t >= 1) { this._fadeFrom = null; this.draw(); return; }
+      this.draw();
+      requestAnimationFrame(step);
+    };
+    step();
+  }
   setSelected(i) { this.selected = i; this._dirty = true; this.draw(); }
 
   hasGeometry() { return !!this.proj; }
@@ -112,6 +156,15 @@ export class FieldMap {
     if (!P) return;
     const sel = this.selected;
     const dim = sel !== null && sel !== undefined;
+    const d = this.dpr;
+    const fieldPath = (f) => { ctx.beginPath(); for (const ring of f.rings) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(P.x(x), P.y(y)) : ctx.moveTo(P.x(x), P.y(y)))); ctx.closePath(); } };
+
+    // il campo come una "tessera" in rilievo sullo sfondo
+    ctx.save();
+    ctx.shadowColor = tok("--map-shadow"); ctx.shadowBlur = 22 * d; ctx.shadowOffsetY = 8 * d;
+    ctx.fillStyle = tok("--map-field");
+    for (const f of this.fields) if (f.rings.length) { fieldPath(f); ctx.fill("evenodd"); }
+    ctx.restore();
 
     // celle di griglia
     if (this._grid) this._drawGrid(ctx, P, dim);
@@ -135,6 +188,18 @@ export class FieldMap {
         ctx.stroke();
         if (p.class === sel) { ctx.strokeStyle = tok("--map-select"); ctx.lineWidth = 2.6 * this.dpr; ctx.stroke(); }
       }
+      // zona sotto il puntatore: bordo chiaro e netto
+      if (this.hover !== null && this.hover !== sel) {
+        for (const p of this.task.polygons) {
+          if (p.class !== this.hover || !this.colors[p.class]) continue;
+          ctx.beginPath();
+          for (const ring of p.rings) ring.forEach(([x, y], i) => (i ? ctx.lineTo(P.x(x), P.y(y)) : ctx.moveTo(P.x(x), P.y(y))));
+          ctx.closePath();
+          ctx.lineJoin = "round";
+          ctx.strokeStyle = tok("--map-halo"); ctx.lineWidth = 4 * d; ctx.stroke();
+          ctx.strokeStyle = tok("--map-select"); ctx.lineWidth = 1.6 * d; ctx.stroke();
+        }
+      }
     } else if (!this._grid && this.task && this.colors.length === 1 && this.colors[0]) {
       // rateo unico senza geometria: tutto il campo dello stesso colore
       for (const f of this.fields) {
@@ -148,16 +213,122 @@ export class FieldMap {
       }
     }
 
-    // contorno del campo
+    // contorno del campo: alone bianco + linea blu
+    ctx.lineJoin = "round";
     for (const f of this.fields) {
-      ctx.beginPath();
-      for (const ring of f.rings) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(P.x(x), P.y(y)) : ctx.moveTo(P.x(x), P.y(y)))); ctx.closePath(); }
-      ctx.strokeStyle = tok("--map-outline");
-      ctx.lineWidth = 2.4 * this.dpr;
-      ctx.lineJoin = "round";
-      ctx.stroke();
+      fieldPath(f);
+      ctx.strokeStyle = tok("--map-halo"); ctx.lineWidth = 5.5 * d; ctx.stroke();
+      ctx.strokeStyle = tok("--map-outline"); ctx.lineWidth = 2.2 * d; ctx.stroke();
     }
+    this._drawLabels(ctx, P, dim);
     this._furniture(ctx, P);
+
+    // dissolvenza dallo stato precedente
+    if (this._fadeFrom) {
+      const t = Math.min(1, (performance.now() - this._fadeT0) / 260);
+      ctx.globalAlpha = 1 - t * t * (3 - 2 * t);
+      ctx.drawImage(this._fadeFrom, 0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---- etichette dei ratei sulle zone ----
+  _labelSpots(P) {
+    const spots = [];
+    const minW = 70 * this.dpr, minH = 30 * this.dpr;
+    if (this.task && this.task.polygons && this.task.polygons.length) {
+      for (const p of this.task.polygons) {
+        const outer = p.rings[0];
+        if (!outer || !this.labels[p.class]) continue;
+        let a = 0, cx = 0, cy = 0, x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (let i = 0, j = outer.length - 1; i < outer.length; j = i++) {
+          const xi = P.x(outer[i][0]), yi = P.y(outer[i][1]), xj = P.x(outer[j][0]), yj = P.y(outer[j][1]);
+          const f = xj * yi - xi * yj;
+          a += f; cx += (xi + xj) * f; cy += (yi + yj) * f;
+          x0 = Math.min(x0, xi); x1 = Math.max(x1, xi); y0 = Math.min(y0, yi); y1 = Math.max(y1, yi);
+        }
+        if (Math.abs(a) < 1e-6 || x1 - x0 < minW || y1 - y0 < minH) continue;
+        cx /= 3 * a; cy /= 3 * a;
+        if (!inRings(P.lon(cx), P.lat(cy), p.rings)) continue;
+        spots.push([p.class, cx, cy, Math.abs(a)]);
+      }
+    } else if (this._grid) {
+      const g = this._grid;
+      if (!this._gridPos) this._gridPos = this._gridCentres(g);
+      const cellPx = Math.abs(P.x(g.min_lon + g.dlon) - P.x(g.min_lon)) * Math.abs(P.y(g.min_lat) - P.y(g.min_lat + g.dlat));
+      for (const [k, c] of this._gridPos) {
+        if (!this.labels[k] || c.n * cellPx < minW * minH * 2) continue;
+        spots.push([k, P.x(g.min_lon + (c.col + 0.5) * g.dlon), P.y(g.min_lat + (c.row + 0.5) * g.dlat), c.n]);
+      }
+    } else if (this.colors.length === 1 && this.labels[0] && this.fields.length) {
+      let sx = 0, sy = 0, n = 0;
+      for (const f of this.fields) for (const [x, y] of f.rings[0] || []) { sx += P.x(x); sy += P.y(y); n++; }
+      if (n) spots.push([0, sx / n, sy / n, 1]);
+    }
+    return spots.sort((a, b) => b[3] - a[3]);          // prima le zone grandi: vincono loro se le etichette si toccano
+  }
+
+  // per ogni classe di una griglia a zone: la cella della classe più vicina al suo baricentro
+  _gridCentres(g) {
+    const acc = new Map();
+    for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
+      const k = g.cls[r * g.cols + c];
+      if (k === OUTSIDE) continue;
+      const a = acc.get(k) || { sr: 0, sc: 0, n: 0 };
+      a.sr += r; a.sc += c; a.n++; acc.set(k, a);
+    }
+    const out = new Map();
+    if (acc.size > 12) return out;                    // mappe continue: troppe classi per etichettarle
+    for (const [k, a] of acc) {
+      const mr = a.sr / a.n, mc = a.sc / a.n;
+      let best = null, bd = Infinity;
+      for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
+        if (g.cls[r * g.cols + c] !== k) continue;
+        const dd = (r - mr) ** 2 + (c - mc) ** 2;
+        if (dd < bd) { bd = dd; best = { row: r, col: c }; }
+      }
+      if (best) out.set(k, { ...best, n: a.n });
+    }
+    return out;
+  }
+
+  _drawLabels(ctx, P, dim) {
+    if (!this.labels.length) return;
+    const d = this.dpr, font = getComputedStyle(document.body).fontFamily;
+    const fv = `500 ${13 * d}px ${font}`, fu = `400 ${11 * d}px ${font}`;
+    const placed = [], gap = 4 * d;
+    for (const [k, x, y] of this._labelSpots(P)) {
+      const l = this.labels[k];
+      const txt = (l.s ? l.s + " " : "") + l.t;
+      ctx.font = fv; const wv = ctx.measureText(txt).width;
+      ctx.font = fu; const wu = l.u ? ctx.measureText(" " + l.u).width : 0;
+      const dot = 8 * d, padX = 8 * d, h = 24 * d;
+      const w = padX + dot + 6 * d + wv + wu + padX;
+      const bx = x - w / 2, by = y - h / 2;
+      if (placed.some(([px, py, pw, ph]) => bx < px + pw + gap && px < bx + w + gap && by < py + ph + gap && py < by + h + gap)) continue;
+      placed.push([bx, by, w, h]);
+      ctx.globalAlpha = dim && k !== this.selected ? 0.35 : 1;
+      ctx.save();
+      ctx.shadowColor = "rgba(0,30,50,.25)"; ctx.shadowBlur = 8 * d; ctx.shadowOffsetY = 2 * d;
+      ctx.fillStyle = tok("--map-label-bg");
+      this._round(ctx, bx, by, w, h, h / 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = this.colors[k] || tok("--map-nodata");
+      ctx.beginPath(); ctx.arc(bx + padX + dot / 2, y, dot / 2, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.2)"; ctx.lineWidth = 1 * d; ctx.stroke();
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = tok("--map-ink"); ctx.font = fv;
+      ctx.fillText(txt, bx + padX + dot + 6 * d, y + 0.5 * d);
+      if (l.u) { ctx.fillStyle = tok("--text-2"); ctx.font = fu; ctx.fillText(" " + l.u, bx + padX + dot + 6 * d + wv, y + 0.5 * d); }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  _round(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
 
   _drawGrid(ctx, P, dim) {
@@ -180,6 +351,7 @@ export class FieldMap {
           img.data[o + 3] = dim && k !== sel ? 70 : 255;
         }
       }
+      if (this.smooth && this.fields.some((f) => !f.from_grid && f.rings.length)) this._bleed(img.data, g.cols, g.rows);
       octx.putImageData(img, 0, 0);
       this._off = off;
       this._masks = this._hatchMasks(img, g);
@@ -187,7 +359,8 @@ export class FieldMap {
     }
     const x0 = P.x(g.min_lon), x1 = P.x(g.min_lon + g.cols * g.dlon);
     const y0 = P.y(g.min_lat + g.rows * g.dlat), y1 = P.y(g.min_lat);
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = this.smooth;            // mappe continue: passaggi sfumati fra celle
+    ctx.imageSmoothingQuality = "high";
     ctx.save();
     const clipped = this.fields.some((f) => !f.from_grid && f.rings.length);
     if (clipped) {                       // le celle non escono dal contorno del campo
@@ -255,6 +428,26 @@ export class FieldMap {
     ctx.drawImage(t, x, y, w, h);
   }
 
+  // con la sfumatura le celle esterne trasparenti creerebbero un alone chiaro sul bordo:
+  // le riempio col colore della cella vicina (il contorno del campo ritaglia comunque il disegno)
+  _bleed(px, cols, rows) {
+    for (let pass = 0; pass < 2; pass++) {
+      const src = px.slice();
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const o = (y * cols + x) * 4;
+        if (src[o + 3]) continue;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const q = (ny * cols + nx) * 4;
+          if (!src[q + 3]) continue;
+          px[o] = src[q]; px[o + 1] = src[q + 1]; px[o + 2] = src[q + 2]; px[o + 3] = src[q + 3];
+          break;
+        }
+      }
+    }
+  }
+
   _rgba() {
     const cvs = document.createElement("canvas");
     cvs.width = cvs.height = 1;
@@ -269,24 +462,30 @@ export class FieldMap {
 
   _furniture(ctx, P) {
     const d = this.dpr;
+    const ink = tok("--map-ink"), font = getComputedStyle(document.body).fontFamily;
+    const chip = (x, y, w, h) => {
+      ctx.save();
+      ctx.shadowColor = "rgba(0,30,50,.18)"; ctx.shadowBlur = 10 * d; ctx.shadowOffsetY = 2 * d;
+      ctx.fillStyle = tok("--map-chrome"); this._round(ctx, x, y, w, h, 8 * d); ctx.fill();
+      ctx.restore();
+    };
     // barra della scala
     const metersPerPx = M_PER_DEG / P.s;              // metri per pixel del canvas
     const want = metersPerPx * 110 * d;
     const nice = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000].reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a));
     const len = nice / metersPerPx;
-    const x = 16 * d, y = this.cv.height - 16 * d;
-    const ink = tok("--map-ink"), font = getComputedStyle(document.body).fontFamily;
-    ctx.fillStyle = tok("--map-chrome");
-    ctx.fillRect(x - 6 * d, y - 22 * d, len + 12 * d, 30 * d);
-    ctx.strokeStyle = ink; ctx.lineWidth = 2 * d;
-    ctx.beginPath(); ctx.moveTo(x, y - 4 * d); ctx.lineTo(x, y); ctx.lineTo(x + len, y); ctx.lineTo(x + len, y - 4 * d); ctx.stroke();
+    const x = 22 * d, y = this.cv.height - 20 * d;
+    chip(x - 10 * d, y - 26 * d, len + 20 * d, 36 * d);
+    ctx.strokeStyle = ink; ctx.lineWidth = 2 * d; ctx.lineCap = "butt";
+    ctx.beginPath(); ctx.moveTo(x, y - 5 * d); ctx.lineTo(x, y); ctx.lineTo(x + len, y); ctx.lineTo(x + len, y - 5 * d); ctx.stroke();
     ctx.fillStyle = ink; ctx.font = `500 ${12 * d}px ${font}`; ctx.textBaseline = "bottom";
-    ctx.fillText(nice >= 1000 ? `${nice / 1000} km` : `${nice} m`, x + 2 * d, y - 6 * d);
+    ctx.fillText(nice >= 1000 ? `${nice / 1000} km` : `${nice} m`, x + 3 * d, y - 6 * d);
     // nord
-    const nx = this.cv.width - 26 * d, ny = 22 * d;
-    ctx.fillStyle = tok("--map-chrome"); ctx.beginPath(); ctx.arc(nx, ny + 6 * d, 17 * d, 0, 7); ctx.fill();
-    ctx.fillStyle = ink; ctx.beginPath(); ctx.moveTo(nx, ny - 8 * d); ctx.lineTo(nx - 6 * d, ny + 6 * d); ctx.lineTo(nx + 6 * d, ny + 6 * d); ctx.fill();
-    ctx.textAlign = "center"; ctx.fillText("N", nx, ny + 21 * d); ctx.textAlign = "start";
+    const nx = this.cv.width - 30 * d, ny = 30 * d;
+    chip(nx - 17 * d, ny - 17 * d, 34 * d, 40 * d);
+    ctx.fillStyle = ink; ctx.beginPath(); ctx.moveTo(nx, ny - 10 * d); ctx.lineTo(nx - 6 * d, ny + 4 * d); ctx.lineTo(nx, ny + 1 * d); ctx.lineTo(nx + 6 * d, ny + 4 * d); ctx.closePath(); ctx.fill();
+    ctx.textAlign = "center"; ctx.font = `500 ${11 * d}px ${font}`;
+    ctx.fillText("N", nx, ny + 19 * d); ctx.textAlign = "start";
   }
 
   // ---- interazione ----
@@ -317,10 +516,10 @@ export class FieldMap {
   _move(e) {
     const k = this._hit(e);
     this.cv.style.cursor = k === null ? "default" : "pointer";
-    if (k !== this.hover) this.hover = k;
+    if (k !== this.hover) { this.hover = k; if (this.task && this.task.polygons && this.task.polygons.length) this.draw(); }
     this.h.hover && this.h.hover(k, e);
   }
-  _leave() { this.hover = null; this.h.hover && this.h.hover(null, null); }
+  _leave() { const had = this.hover !== null; this.hover = null; if (had) this.draw(); this.h.hover && this.h.hover(null, null); }
   _click(e, touch = false) {
     const k = this._hit(e);
     this.h.click && this.h.click(k, touch ? e : e);

@@ -41,7 +41,8 @@
   --ramp-lo:#DBEEFA; --ramp-mid:#007AC9; --ramp-hi:#003A66;
   --map-outline:var(--brand-strong); --map-select:var(--text-1); --map-ink:var(--text-1);
   --map-chrome:rgba(255,255,255,.88); --map-zone-line:rgba(255,255,255,.85); --map-hatch:rgba(255,255,255,.72);
-  --map-bg-1:#F7FAFC; --map-bg-2:#EEF3F7;
+  --map-bg-1:#F7FAFC; --map-bg-2:#EAF0F5; --map-dot:rgba(19,34,46,.08);
+  --map-field:#FFFFFF; --map-shadow:rgba(0,45,80,.24); --map-halo:rgba(255,255,255,.95); --map-label-bg:rgba(255,255,255,.95);
   /* tipografia */
   --font:"Inter","Helvetica Neue",Arial,sans-serif;
   --fw-regular:400; --fw-medium:500;
@@ -238,13 +239,14 @@ details.grp>.body{padding:0 var(--sp-4) var(--sp-4)}
 .seg button[aria-pressed=true]{background:var(--brand);color:var(--white)}
 .seg button[disabled]{background:var(--surface-2);color:var(--text-2);cursor:not-allowed;text-decoration:line-through;text-decoration-color:rgba(74,90,103,.45)}
 @media (pointer:coarse){.seg button{min-height:var(--tap)}}
-.mapwrap{position:relative;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:linear-gradient(var(--map-bg-1),var(--map-bg-2))}
+.mapwrap{position:relative;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:radial-gradient(circle at 1px 1px,var(--map-dot) 1px,transparent 1.5px) 0 0/18px 18px,linear-gradient(var(--map-bg-1),var(--map-bg-2))}
 #map{display:block;width:100%;height:clamp(320px,52vh,560px);cursor:crosshair}
 .tip{position:absolute;pointer-events:none;background:rgba(19,34,46,.95);color:var(--white);padding:var(--sp-2) var(--sp-3);border-radius:9px;font-size:var(--fs-sm);max-width:300px;z-index:3;box-shadow:0 4px 16px rgba(0,0,0,.28)}
 .tip b{display:block;font-size:var(--fs-base)}
 .mapmsg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:var(--sp-6);color:var(--text-2);pointer-events:none}
 .legend{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);margin-top:var(--sp-3);font-size:var(--fs-sm)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
+.legend span b{font-variant-numeric:tabular-nums;color:var(--text-1)}
 .legend i{width:18px;height:18px;border-radius:4px;display:inline-block;border:1px solid rgba(0,0,0,.18)}
 .legend i.h-u,.legend i.h-w{background-image:repeating-linear-gradient(-45deg,var(--map-hatch) 0 2px,transparent 2px 6px)}
 .legend i.h-v{background-image:repeating-linear-gradient(-45deg,var(--map-hatch) 0 2px,transparent 2px 6px),repeating-linear-gradient(45deg,var(--map-hatch) 0 2px,transparent 2px 6px)}
