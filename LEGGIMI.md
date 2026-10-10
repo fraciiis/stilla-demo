@@ -1,6 +1,6 @@
 # Ultimo Metro
 
-Carichi l'ISOXML del campo, scegli l'hardware Nordson/ARAG che hai sull'irroratrice, vedi **dove il trattamento riesce e dove no**, e scarichi un file **specializzato per il tuo impianto**.
+Dalla mappa del campo al trattamento documentato, in sei fasi: carichi la prescrizione ISOXML o una mappa indice GeoJSON, vedi le **zone di intervento**, confronti **tre ricettari** calcolati sui dati di etichetta, verifichi la tua **attrezzatura Nordson/ARAG**, vedi i **componenti ARAG** che servono davvero e prepari la **scheda del trattamento** (stampabile, JSON) insieme al file ISOXML per il terminale. Architettura e limiti: `docs/PIPELINE.md`.
 
 ## Avvio (non serve installare nulla oltre a Python 3.9+)
 
@@ -14,11 +14,14 @@ Si apre il browser su `http://localhost:8765/`. Nella finestra nera compaiono an
 
 ## Come si usa
 
-1. **File**: trascina il `.zip` (o `TASKDATA.XML`) oppure prova uno degli 8 esempi.
-2. **Hardware**: cambia ugelli, Flowtron, SELETRON, velocità… a ogni modifica la mappa, gli indicatori e il verdetto si aggiornano. «Rispetto a prima» ti dice quante zone vanno meglio o peggio; «Fissa come riferimento» congela il confronto.
-3. **Scarica**: spunta la conferma sui ratei che cambiano e scarica `…_NORDSON.zip`. Il server rilegge il file prodotto e verifica che i ratei coincidano con quelli attesi.
+1. **Mappa e zone**: trascina il `.zip`/`TASKDATA.XML` o una mappa indice `.geojson` (WGS84; scegli indice, numero di zone e i due volumi estremi), oppure prova un esempio. Vedi classi di intervento, variabilità e da dove arriva ogni dato.
+2. **Ricettari**: inserisci i dati letti sull'etichetta autorizzata (n. registrazione, fonte, dosi, volumi, prezzo). L'app calcola tre proposte: **A** aderente alla prescrizione, **B** minimo prodotto entro etichetta, **C** rateo unico, con tabella di confronto.
+3. **Scelta**: scegli una proposta; la decisione e la nota entrano nel registro. La scelta non autorizza l'esecuzione.
+4. **Hardware**: indica ugelli, Flowtron, SELETRON, velocità… Il riquadro «Ricettario sull'hardware» confronta requisito per requisito (adeguata / parziale / insufficiente); mappa, indicatori e schede (Zone, Ugelli e portate, Meteo, Come si calcola) lavorano sui volumi del ricettario.
+5. **Componenti ARAG**: compare quando serve. Proposte dal catalogo, divise in indispensabili / per la precisione / opzionali, con prima e dopo ricalcolati; «Prova questa configurazione» le applica.
+6. **Documenti**: completa operatore, certificato, bersaglio, date (e quantità effettive se eseguito), conferma le dichiarazioni e valida. Esporti la scheda (stampa/PDF), i dati JSON, il file ISOXML per il terminale (riletto e verificato dal server) e il rapporto tecnico.
 
-Schede in basso: **Zone** (tabella con ugello, velocità, pressione, duty per ogni zona), **Ugelli e portate** (campo di rateo di ogni ugello + ugelli o coppie SELETRON che farebbero meglio), **Etichette**, **Meteo**, **Come si calcola**. Il bottone *Rapporto* apre una pagina stampabile.
+Il riepilogo sotto il nome del file mostra in ogni momento stato del trattamento, dati mancanti, avvisi e decisioni. Cambiare prodotti, ricettario o hardware aggiorna le verifiche a valle e annulla la validazione.
 
 ## Perché gli amici non riuscivano ad aprirlo (e cosa è cambiato)
 
@@ -42,14 +45,16 @@ Schede in basso: **Zone** (tabella con ugello, velocità, pressione, duty per og
 - Con Flowtron (PWM) pressione fissa e apertura variabile; il **duty minimo (20 %) è un'ipotesi** modificabile. Senza PWM regola solo la pressione.
 - Compatibilità fra componenti (terminale con Task Controller, IBX con IBX, regolazione di portata, finestra di pressione) dal catalogo pubblico: **da confermare con ARAG** prima di lavorare.
 - Orientamento delle griglie GRD (riga 0 a sud, colonne da ovest): lettura mia della norma, da **confermare con un tuo export reale**. Non provato su un terminale Delta vero.
-- **Etichette**: non ho un archivio di etichette e non invento autorizzazioni. La scheda raccoglie i dati che copi dall'etichetta ufficiale (restano nel tuo browser) e li confronta con i ratei; link alla banca dati del Ministero della Salute.
+- **Etichette e ricettari**: non ho un archivio di etichette e non invento autorizzazioni. Dosi e volumi li copi dall'etichetta ufficiale indicando la fonte (restano nel tuo browser); con un'unica miscela la dose segue il volume di ogni zona. L'efficacia agronomica non è stimata.
+- **Documenti**: la scheda supporta la tracciabilità ma non attesta la conformità normativa; «validato» è la conferma del tecnico.
 - **Meteo**: previsioni Open-Meteo (serve internet sul dispositivo); soglie orientative, non un parere agronomico.
 - Il catalogo ha 119 prodotti (ugelli ASJ AFC 80/110, WRC 80/110 e SF 110, SELETRON, FCV, flussimetri Orion, valvole 853, pompa MSP400, terminali Delta/Bravo, IBX50/IBX100) tratti da pagine pubbliche; `docs/RICERCA_MERCATO.md` elenca le fonti.
 
 ## Per sviluppatori
 
 - Solo libreria standard Python, nessuna dipendenza. `python3 app.py [--port=9000] [--local] [--no-browser]`; variabili `PORT`, `ULTIMO_METRO_HOST`, `NO_BROWSER`.
-- `python3 -m unittest discover -s tests -t .` (49 test: lettura ISOXML, idraulica, catene, specializzazione, server, sessioni, caricamenti ostili).
+- `python3 -m unittest discover -s tests -t .` (70 test: lettura ISOXML, idraulica, catene, specializzazione, server, sessioni, caricamenti ostili, zone, ricettari, compatibilità, proposte ARAG, documenti, GeoJSON).
+- `python3 tools/make_geojson_example.py` rigenera la mappa NDVI di prova (`static/data/esempio_ndvi.geojson`, dati sintetici).
 - `python3 tools/make_examples.py` rigenera gli 8 esempi in `examples/`.
 - Limiti: file 25 MB, 4 milioni di celle, 80 sessioni in memoria per 6 ore. XML con DTD/entità e ZIP con percorsi non sicuri vengono rifiutati.
-- Struttura: `um/isoxml.py` (lettura/scrittura), `um/hardware.py` (catalogo e catena), `um/engine.py` (idraulica, piano, specializzazione, suggerimenti), `um/service.py` (sessioni, API), `um/server.py` (HTTP), `static/` (interfaccia).
+- Struttura: `um/isoxml.py` (lettura/scrittura), `um/hardware.py` (catalogo e catena), `um/engine.py` (idraulica, piano, specializzazione, suggerimenti), `um/zoning.py` (zone), `um/geoimport.py` (GeoJSON → ISOXML), `um/recipes.py` (ricettari), `um/matching.py` (compatibilità e proposte ARAG), `um/dossier.py` (documenti), `um/satellite.py` (punto di integrazione satellitare), `um/service.py` (sessioni, API), `um/server.py` (HTTP), `static/` (interfaccia: `pipeline.js` stato condiviso, un modulo per fase).
