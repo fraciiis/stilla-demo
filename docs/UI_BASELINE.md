@@ -115,3 +115,21 @@ Il server classifica ogni operazione (`task.kind` in `um/isoxml.py`) e la mappa 
 Varianti che cambiano l'aspetto senza cambiare tipo: griglia **senza coordinate** adattata al campo (`geo: false`, es. 07), contorno del campo **ricavato dalla griglia** (`from_grid`), campo in **file esterno XFR** (es. 08), griglie grandi **campionate** per la visualizzazione (`decimated`).
 
 Su ognuna si applicano 4 viste di colore: Prescrizione (rampa blu per L/ha), Sul tuo hardware (stati), File specializzato (stati dopo la riscrittura), Rispetto a prima (meglio / peggio / invariato).
+
+## 7. Mappa più moderna (seconda fase, via libera a migliorare tutto il progetto)
+
+Nessuna rete esterna: la mappa resta utilizzabile offline sul campo. Screenshot in `docs/ui-after/mappa/`.
+
+| Novità | Valore per l'utente |
+|---|---|
+| Campo come «tessera» in rilievo (ombra) su sfondo a puntini, contorno con alone bianco | il campo si stacca dallo sfondo, lettura immediata |
+| **Etichette sulle zone** (poligoni e griglie a zone fino a 12 classi): pallino di stato + simbolo + rateo | i numeri chiave si leggono senza passare il mouse: Prescrizione = richiesto, Sul tuo hardware = erogato, File specializzato = nuovo rateo, Rispetto a prima = meglio/peggio |
+| Etichette senza sovrapposizioni (vincono le zone più grandi), nascoste se la zona è troppo piccola | niente testo illeggibile |
+| **Mappe continue sfumate** (griglia tipo 2, vista Prescrizione) | aspetto da mappa di vigore; nelle viste di stato le celle restano nette, per non mescolare colori di stati diversi |
+| **Dissolvenza** di 0,26 s quando cambiano vista o hardware (disattivata con «riduci movimento») | si vede dove la mappa cambia |
+| Zona evidenziata al passaggio del mouse (poligoni) | si capisce quale zona descrive il tooltip |
+| **Legenda con le quote**: ogni stato mostra la % della superficie trattata (stessa base dei KPI del server); in Prescrizione anche la media | la legenda diventa un riepilogo |
+| Scala e Nord in riquadri arrotondati | coerenti col resto dell'interfaccia |
+| Tooltip: dice se lo stato è «sul tuo hardware» o «nel file specializzato» | prima mostrava solo lo stato sull'hardware anche nella vista File specializzato |
+
+Altri miglioramenti della stessa fase: rapporto stampabile (`um/report.py`) con la nuova palette e badge con simbolo · stepper con `aria-current="step"` · `.gitignore` per le cache Python e cache `.pyc` tolte dal repository · file Source Sans 3 rimossi (non più usati) · test del font aggiornato al file Inter.
