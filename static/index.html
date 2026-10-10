@@ -12,17 +12,18 @@
 <header class="top">
   <div class="brand"><span class="mark" aria-hidden="true"></span><div><b>Ultimo Metro</b><small>ISOXML su misura per il tuo hardware Nordson</small></div></div>
   <nav class="steps" aria-label="Fasi">
-    <span class="step on" id="st1"><i>1</i>File ISOXML</span>
-    <span class="step" id="st2"><i>2</i>Il tuo hardware</span>
-    <span class="step" id="st3"><i>3</i>Scarica</span>
+    <span class="step on" id="st1"><i>1</i><span class="st-txt">File ISOXML</span></span>
+    <span class="step" id="st2"><i>2</i><span class="st-txt">Il tuo hardware</span></span>
+    <span class="step" id="st3"><i>3</i><span class="st-txt">Scarica</span></span>
   </nav>
-  <button class="btn" id="btn-share" type="button">Condividi con gli amici</button>
+  <button class="btn" id="btn-share" type="button" aria-label="Condividi con gli amici"><span class="long">Condividi con gli amici</span><span class="short">Condividi</span></button>
 </header>
 
 <main>
   <!-- ===================== 1 · Caricamento ===================== -->
   <section id="landing" hidden>
     <div class="hero">
+      <span class="eyebrow">Fase 1 di 3 · Carica la prescrizione</span>
       <h1>Dal file della prescrizione alla tua irroratrice Nordson</h1>
       <p>Carica l'ISOXML del campo. Scegli l'hardware che hai sulla macchina: vedi subito <b>dove il trattamento riesce e dove no</b>, e scarichi un file <b>specializzato per il tuo impianto</b>.</p>
     </div>
@@ -33,14 +34,14 @@
       <input id="file" type="file" accept=".zip,.xml,application/zip,text/xml" hidden>
     </label>
     <div id="landing-err" class="alert red" hidden></div>
-    <div class="how">
-      <div><b>1 · Carichi la prescrizione</b>Vedi subito campo, zone, ratei e superfici che il file contiene.</div>
-      <div><b>2 · Scegli il tuo hardware</b>Terminale, Flowtron, SELETRON, ugelli… La mappa si aggiorna a ogni modifica.</div>
-      <div><b>3 · Scarichi il file su misura</b>I ratei che il tuo impianto non può erogare vengono portati a ciò che davvero riesce a fare.</div>
-    </div>
+    <ol class="how" aria-label="Come funziona">
+      <li><b>Carichi la prescrizione</b><span>Vedi subito campo, zone, ratei e superfici che il file contiene.</span></li>
+      <li><b>Scegli il tuo hardware</b><span>Terminale, Flowtron, SELETRON, ugelli… La mappa si aggiorna a ogni modifica.</span></li>
+      <li><b>Scarichi il file su misura</b><span>I ratei che il tuo impianto non può erogare vengono portati a ciò che davvero riesce a fare.</span></li>
+    </ol>
     <h2>Oppure prova con un esempio</h2>
     <div class="examples" id="examples"></div>
-    <p class="mut small" style="margin-top:22px">Il file resta nella tua sessione su questo server: gli altri visitatori non lo vedono. Gli esempi sono dati di prova, non campi reali.</p>
+    <p class="mut small privacy">Il file resta nella tua sessione su questo server: gli altri visitatori non lo vedono. Gli esempi sono dati di prova, non campi reali.</p>
   </section>
 
   <!-- ===================== 2 · Area di lavoro ===================== -->
@@ -48,18 +49,18 @@
     <div class="card filebar">
       <div><div class="name" id="fb-name"></div><div class="meta" id="fb-meta"></div></div>
       <select id="task-sel" aria-label="Operazione del file" hidden></select>
-      <button class="btn sm" id="btn-newfile" type="button" style="margin-left:auto">Cambia file</button>
+      <button class="btn sm" id="btn-newfile" type="button">Cambia file</button>
     </div>
     <div id="fb-warn"></div>
 
     <div class="layout">
       <aside class="card hw" id="hw" aria-label="Hardware">
         <div class="hwhead"><h2>Il tuo hardware Nordson</h2><p>Cambia un componente: mappa ed esiti si aggiornano subito.</p></div>
-        <div style="padding:12px 16px 4px">
-          <label class="f" for="preset" style="margin-top:0">Configurazione di partenza</label>
+        <div class="hwpreset">
+          <label class="f" for="preset">Configurazione di partenza</label>
           <select id="preset"></select>
         </div>
-        <div id="hw-alerts" style="padding:0 16px"></div>
+        <div id="hw-alerts"></div>
         <details class="grp" open id="g-nozzles"><summary>Ugelli <span class="chip-sum" id="s-nozzles"></span></summary><div class="body" id="b-nozzles"></div></details>
         <details class="grp" open id="g-chain"><summary>Catena di controllo <span class="chip-sum" id="s-chain"></span></summary><div class="body" id="b-chain"></div></details>
         <details class="grp" id="g-work"><summary>Barra e lavoro <span class="chip-sum" id="s-work"></span></summary><div class="body" id="b-work"></div></details>
@@ -71,14 +72,14 @@
         <p class="jump"><button class="btn sm" id="btn-jump" type="button">Cambia ugelli e hardware ↓</button></p>
         <div class="changebar" id="changebar" hidden></div>
 
-        <div class="card" style="margin-top:16px">
+        <div class="card gap-top">
           <header>
             <h2>Il campo</h2>
             <div class="seg" id="views" role="group" aria-label="Vista della mappa">
               <button type="button" data-v="rx" aria-pressed="false">Prescrizione</button>
               <button type="button" data-v="hw" aria-pressed="true">Sul tuo hardware</button>
               <button type="button" data-v="after" aria-pressed="false">File specializzato</button>
-              <button type="button" data-v="diff" aria-pressed="false" disabled>Rispetto a prima</button>
+              <button type="button" data-v="diff" aria-pressed="false" disabled title="Disponibile dopo aver cambiato un componente">Rispetto a prima</button>
             </div>
           </header>
           <div class="mapwrap"><canvas id="map" role="img" aria-label="Mappa del campo"></canvas><div class="mapmsg" id="mapmsg" hidden></div><div class="tip" id="tip" hidden></div></div>
@@ -88,7 +89,7 @@
 
         <div class="kpis" id="kpis"></div>
 
-        <div class="card" style="margin-top:16px">
+        <div class="card gap-top">
           <div class="tabs" role="tablist" id="tabs">
             <button role="tab" aria-selected="true" data-t="zones">Zone</button>
             <button role="tab" aria-selected="false" data-t="nozzles">Ugelli e portate</button>
@@ -109,7 +110,7 @@
       <div class="info"><b id="ex-title">File specializzato</b><span class="mut small" id="ex-sub"></span></div>
       <label class="check" id="ex-approve-wrap" hidden><input type="checkbox" id="ex-approve"><span>Ho controllato i ratei che cambiano</span></label>
       <button class="btn" id="btn-report" type="button">Rapporto</button>
-      <button class="btn primary" id="btn-export" type="button">Scarica ISOXML<span class="long"> per il mio hardware</span></button>
+      <button class="btn primary" id="btn-export" type="button"><span>Scarica ISOXML<span class="long"> per il mio hardware</span></span></button>
     </div>
   </section>
 </main>
