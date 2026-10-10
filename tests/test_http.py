@@ -162,8 +162,9 @@ class Flow(ServerCase):
 
     def test_evaluate_before_upload_is_a_clear_error(self):
         st, _, body = self.client().post_json("/api/evaluate", {"task": 0, "config": FULL})
-        self.assertEqual(st, 400)
+        self.assertEqual(st, 409)                                 # 409 «no_file»: il browser ricarica la sorgente e riprova
         self.assertIn("Carica", json.loads(body)["error"])
+        self.assertEqual(json.loads(body)["code"], "no_file")
 
     def test_garbage_upload_is_a_clear_error(self):
         c = self.client()

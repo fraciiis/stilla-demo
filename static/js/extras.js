@@ -98,6 +98,16 @@ export async function openShare() {
   try {
     const n = await api.network();
     const here = location.origin;
+    if (n.hosted) {                                   // versione online: si condivide l'indirizzo pubblico
+      body.innerHTML = `<div class="alert"><b>Questa app è online</b>Chiunque può aprirla da qualunque rete con questo indirizzo.</div>
+        <div class="urlrow"><span class="url">${esc(here)}</span><span class="mut small">indirizzo pubblico</span><button class="btn sm" data-copy="${esc(here)}" type="button">Copia</button></div>
+        <div id="qr"></div><p class="small mut" style="text-align:center;margin:0">Inquadra con la fotocamera del telefono</p>`;
+      body.querySelector("[data-copy]").addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(here); toast("Indirizzo copiato"); } catch { toast(here); }
+      });
+      if (window.qrcode) { const qr = window.qrcode(0, "M"); qr.addData(here); qr.make(); $("#qr").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); }
+      return;
+    }
     const urls = n.addresses.map((a) => ({ url: a.url, note: a.note, primary: a.primary }));
     if (n.hostname_url) urls.push({ url: n.hostname_url, note: "nome del Mac (iPhone e Mac)", primary: false });
     const isLocal = /^(localhost|127\.|\[::1\])/.test(location.hostname);

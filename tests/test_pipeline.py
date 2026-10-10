@@ -11,6 +11,11 @@ from tests.test_http import ServerCase
 from um import geoimport, isoxml, service
 from um.hardware import load_catalog
 
+
+def _demo_db():
+    with open("static/data/demo_etichette.json", encoding="utf-8") as fh:
+        return {p["name"]: {**p, "source": "DEMO"} for p in json.load(fh)["products"]}
+
 DECL = {k: True for k in ("label_read", "mix_ok", "operator_license", "equipment_checked", "weather_buffer")}
 OPERATOR = {"name": "Operatore di prova", "license_no": "X1", "target": "peronospora", "date_planned": "2026-10-12"}
 
@@ -356,7 +361,7 @@ class DemoMode(unittest.TestCase):
         self.assertTrue(all(s["date"] for s in scenes))
 
     def test_every_demo_field_runs_the_whole_pipeline(self):
-        db = {p["name"]: {**p, "source": "DEMO"} for p in json.load(open("static/data/demo_etichette.json", encoding="utf-8"))["products"]}
+        db = _demo_db()
         prod = {"vigneto_colle": "Peronex Duo SC", "mais_cascina": "Erbidemo Mais OD", "frumento_podere": "Triazodemo 250 EC", "pomodoro_nord": "Mandidemo 250 SC"}
         for f in service.demo_fields()["fields"]:
             s = service.Session(sid="d")
@@ -404,7 +409,7 @@ class DemoMode(unittest.TestCase):
         self.assertEqual({r["id"]: r for r in again["rows"]}["sections"]["status"], "ok")
 
     def test_label_db_mix_incompatibility(self):
-        db = {p["name"]: {**p, "source": "DEMO"} for p in json.load(open("static/data/demo_etichette.json", encoding="utf-8"))["products"]}
+        db = _demo_db()
         s = session()
         r = service.recipes_payload(s, {"task": 0, "products": [db["Cuprodemo 20 WG"], db["Fosemdemo 80 WG"]], "options": {}, "config": FULL})
         self.assertTrue(any("non ammessa" in c["text"] and c["level"] == "fail" for c in r["recipes"][0]["constraints"]))
@@ -438,3 +443,43 @@ class DemoHttp(ServerCase):
         st, _, body = c.req("POST", "/api/import", _shapefile_zip(), {"Content-Type": "application/octet-stream", "X-Filename": "campo.zip"})
         self.assertEqual(st, 200, body)
         self.assertEqual(json.loads(body)["vector"]["features"], 4)
+
+
+class Wsgi(unittest.TestCase):
+    """Adattatore per i servizi online (Vercel): stesse risposte del server locale, sessione via cookie, 409 senza file."""
+
+    def call(self, method, path, body=b"", cookie=None, ctype="application/json"):
+        from wsgiref.util import setup_testing_defaults
+        from um.wsgi import app
+        env = {"REQUEST_METHOD": method, "PATH_INFO": urllib.parse.urlsplit(path).path,
+               "QUERY_STRING": urllib.parse.urlsplit(path).query, "wsgi.input": io.BytesIO(body),
+               "CONTENT_LENGTH": str(len(body)), "CONTENT_TYPE": ctype}
+        if cookie:
+            env["HTTP_COOKIE"] = cookie
+        setup_testing_defaults(env)
+        got = {}
+        out = b"".join(app(env, lambda status, headers: got.update(status=status, headers=headers)))
+        return int(got["status"].split()[0]), dict(got["headers"]), out
+
+    def test_static_and_health(self):
+        st, h, body = self.call("GET", "/")
+        self.assertEqual(st, 200)
+        self.assertIn(b"<html", body.lower())
+        self.assertNotIn("Connection", h)
+        st, _, body = self.call("GET", "/healthz")
+        self.assertEqual((st, json.loads(body)["ok"]), (200, True))
+
+    def test_demo_flow_and_no_file(self):
+        st, _, body = self.call("POST", "/api/zoning", b'{"task":0}')
+        self.assertEqual(st, 409)
+        self.assertEqual(json.loads(body)["code"], "no_file")
+        st, h, body = self.call("POST", "/api/demo/load", json.dumps({"field": "vigneto_colle", "acquisition": "drone-0618",
+                                                                    "classes": 3, "vol_low": 250, "vol_high": 375}).encode())
+        self.assertEqual(st, 200, body[:200])
+        cookie = h["Set-Cookie"].split(";")[0]
+        st, _, body = self.call("POST", "/api/zoning", b'{"task":0}', cookie=cookie)
+        self.assertEqual(st, 200, body[:200])
+        self.assertTrue(json.loads(body)["zones"])
+        st, _, body = self.call("GET", "/api/satellite/search?field=mais_cascina")
+        self.assertEqual(st, 200)
+        self.assertTrue(json.loads(body)["scenes"])

@@ -73,7 +73,7 @@ Esiti verificati sui 4 campi con la configurazione suggerita: il ricettario A (a
 
 ## Verifiche eseguite
 
-- 78 test automatici (49 preesistenti + 29 della pipeline e della modalità dimostrativa), verdi su Python 3.9, 3.11 e 3.13.
+- 80 test automatici (49 preesistenti + 31 della pipeline, della modalità dimostrativa e dell'adattatore online), verdi su Python 3.9, 3.11 e 3.13.
 - Percorso ISOXML completo nel browser (1440 e 375 px) e tutti gli 8 esempi attraverso le fasi 1–6.
 - Percorso dimostrativo sui 4 campi: galleria → acquisizione (drone/Sentinel-2, ricerca scene) → zone → banca dati → ricettari → hardware → proposte ARAG applicate → documento validato con avviso DEMO; anche a 375 px. Nessun errore JS, nessuno scorrimento orizzontale.
 
@@ -87,6 +87,7 @@ Esiti verificati sui 4 campi con la configurazione suggerita: il ricettario A (a
 
 ## Problemi residui noti
 
+- Versione online (Vercel e servizi serverless, `um/wsgi.py`): la sessione è nella memoria dell'istanza; quando l'istanza riparte il server risponde 409 «no_file» e il browser ricarica la sorgente (esempio, campo dimostrativo, file ancora in memoria) e ripete la richiesta. Caricamenti fino a circa 4 MB.
 - Lo stato della pipeline vive nel browser (per file e operazione): un altro dispositivo non lo vede. Soluzione: salvarlo nella sessione del server o in un archivio, se servirà la condivisione.
 - Le celle di una mappa GeoJSON possono sporgere dal confine del campo: il disegno non le ritaglia sui poligoni di zona.
 - PDF: si ottiene dalla stampa del browser; un PDF generato dal server richiederebbe una libreria esterna.

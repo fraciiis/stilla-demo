@@ -21,6 +21,11 @@ Il progetto è pronto per i servizi che eseguono app Python o container; non ser
   (oppure Dashboard → New → Blueprint → questo repository). La configurazione è in `render.yaml`. Dopo 2–3 minuti
   ricevi un indirizzo `https://….onrender.com` da condividere. Nel piano gratuito il servizio si addormenta dopo
   ~15 minuti senza visite: la prima apertura successiva impiega circa un minuto.
+- **Vercel**: importa il repository su vercel.com (Add New → Project), scegli il ramo e pubblica senza cambiare
+  impostazioni: la configurazione è in `vercel.json` (funzione Python `api/index.py`, adattatore `um/wsgi.py`).
+  Limiti della versione online: file caricati fino a circa 4 MB; la memoria del server non è garantita tra una richiesta e
+  l'altra, quindi se l'istanza riparte il browser ricarica da solo esempio, campo dimostrativo o file e ripete la richiesta
+  (un file caricato a mano va ricaricato solo se nel frattempo hai ricaricato anche la pagina).
 - **Altri servizi con container** (Fly.io, Railway, Koyeb, Google Cloud Run): usano il `Dockerfile`; l'app legge la porta da `PORT`.
 - **Solo per una presentazione dal tuo computer**: avvia l'app e condividi l'indirizzo «per gli amici» (stessa rete Wi-Fi),
   oppure crea un link temporaneo con un tunnel (es. `cloudflared tunnel --url http://localhost:8765`).
@@ -72,7 +77,7 @@ Il riepilogo sotto il nome del file mostra in ogni momento stato del trattamento
 ## Per sviluppatori
 
 - Solo libreria standard Python, nessuna dipendenza. `python3 app.py [--port=9000] [--local] [--no-browser]`; variabili `PORT`, `ULTIMO_METRO_HOST`, `NO_BROWSER`.
-- `python3 -m unittest discover -s tests -t .` (78 test: lettura ISOXML, idraulica, catene, specializzazione, server, sessioni, caricamenti ostili, zone, ricettari, compatibilità, proposte ARAG, documenti, GeoJSON, shapefile/UTM, modalità dimostrativa).
+- `python3 -m unittest discover -s tests -t .` (80 test: lettura ISOXML, idraulica, catene, specializzazione, server, sessioni, caricamenti ostili, zone, ricettari, compatibilità, proposte ARAG, documenti, GeoJSON, shapefile/UTM, modalità dimostrativa).
 - `python3 tools/make_demo_fields.py` rigenera i campi dimostrativi (`static/demo/fields.json`).
 - `python3 tools/make_geojson_example.py` rigenera la mappa NDVI di prova (`static/data/esempio_ndvi.geojson`, dati sintetici).
 - `python3 tools/make_examples.py` rigenera gli 8 esempi in `examples/`.

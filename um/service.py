@@ -25,6 +25,10 @@ class ServiceError(ValueError):
     pass
 
 
+class NoFileError(ServiceError):
+    """La sessione non ha un file: succede anche quando il server online riparte (il browser ricarica e riprova)."""
+
+
 # --------------------------------------------------------------------------- sessioni
 
 @dataclass
@@ -127,7 +131,7 @@ def load_example(session: Session, example_id: str) -> dict[str, Any]:
 
 def _task(session: Session, index: Any) -> isoxml.TaskModel:
     if session.rx is None:
-        raise ServiceError("Carica prima un file ISOXML.")
+        raise NoFileError("Carica prima un file ISOXML.")
     try:
         return session.rx.tasks[int(index or 0)]
     except (IndexError, ValueError, TypeError):
@@ -283,7 +287,7 @@ def _note_text(strategy: str, cfg: HwConfig) -> str:
 
 def build_export(session: Session, body: dict[str, Any]) -> tuple[bytes, str, dict[str, Any]]:
     if session.raw is None or session.rx is None:
-        raise ServiceError("Carica prima un file ISOXML.")
+        raise NoFileError("Carica prima un file ISOXML.")
     cat = load_catalog()
     cfg = HwConfig.from_dict(body.get("config") or {})
     probs = cfg.problems()

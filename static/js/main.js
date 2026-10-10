@@ -139,6 +139,10 @@ async function init() {
   try {
     const s = await api.session();
     if (s.loaded) { enter(s); restored = true; }
+    else {
+      const r = await api.restore();                 // server ripartito (online): ricarico l'ultimo esempio o campo dimostrativo
+      if (r) { enter(r); restored = true; }
+    }
   } catch { /* nessuna sessione precedente */ }
   if (!restored) $("#landing").hidden = false;
   document.body.dataset.ready = "1";

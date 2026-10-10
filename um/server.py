@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Optional
 
 from . import __version__, geoimport, isoxml, netinfo, service
-from .service import ServiceError, SessionStore
+from .service import NoFileError, ServiceError, SessionStore
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -34,6 +34,7 @@ PIPELINE = {
     "/api/demo/load": service.demo_load,
 }
 COOKIE = "um_sid"
+HOSTED = bool(os.environ.get("VERCEL") or os.environ.get("RENDER") or os.environ.get("UM_HOSTED"))
 
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("text/javascript", ".js")
@@ -219,6 +220,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, html, "text/html; charset=utf-8",
                                       extra={"Content-Disposition": 'inline; filename="piano_di_lavoro.html"'})
             return self._fail(404, "Percorso non trovato.", close=True)
+        except NoFileError as exc:                                # il browser ricarica la sorgente e riprova
+            self._json({"ok": False, "error": str(exc), "code": "no_file"}, 409)
         except (ServiceError, isoxml.IsoxmlError) as exc:
             self._fail(400, str(exc))
         except (BrokenPipeError, ConnectionResetError):
@@ -277,6 +280,8 @@ class Handler(BaseHTTPRequestHandler):
         port = self.server.server_address[1]
         addrs = netinfo.lan_addresses()
         host_hdr = self.headers.get("Host", "")
+        if HOSTED:                                               # online: l'indirizzo da condividere è quello pubblico
+            return {"ok": True, "hosted": True, "port": port, "this_host": host_hdr, "addresses": [], "hostname_url": "", "bound": ""}
         return {"ok": True, "port": port, "this_host": host_hdr,
                 "addresses": [{**a, "url": f"http://{a['ip']}:{port}/"} for a in addrs],
                 "hostname_url": (f"http://{netinfo.local_hostname_url()}:{port}/" if netinfo.local_hostname_url() else ""),
