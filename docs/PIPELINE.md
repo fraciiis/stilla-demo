@@ -43,33 +43,47 @@ GeoJSON ─────┘   (zoning.py)              (recipes.py)              
 | Livelli di compatibilità: ≥ 95 % / ≥ 60 % della superficie entro tolleranza | `matching.py` | soglie dichiarate, modificabili |
 | Proposte ARAG: varianti della configurazione con prodotti del catalogo, tenute solo se migliorano livello o copertura (≥ 3 punti) | `matching.py` | il guadagno è ricalcolato col motore |
 
+## Modalità dimostrativa (simulazioni)
+
+Screenshot: `docs/demo/`. Ogni dato simulato è marcato **DEMO** nell'interfaccia e nel documento, che diventa «documento dimostrativo».
+
+| Integrazione mancante | Simulazione | File |
+|---|---|---|
+| Mappe da satellite e drone | 4 campi verosimili (vigneto, mais, frumento, pomodoro) con indice NDVI a 2 m, contesto attorno (strade, siepi, campi vicini), acquisizioni da drone (GSD 1,2–5,3 cm/px) e Sentinel-2 (10 m, nuvolosità); per il mais anche la mappa delle infestanti. Ortofoto e NDVI sono generati nel browser con filari, interfila, tracce di passaggio e pixel da 10 m per il satellite | `tools/make_demo_fields.py` → `static/demo/fields.json`, `static/js/imagery.js`, `static/js/demo.js`, `um/demo.py` |
+| Fornitore satellitare | catalogo Sentinel-2 simulato: passaggi ogni 5 giorni con nuvolosità, scene nuvolose rifiutate | `um/demo.py` (`satellite_search`), `um/satellite.py` |
+| Dalla mappa alla prescrizione | aggregazione alla risoluzione dell'acquisizione (6 m drone, 10 m satellite), N zone di uguale superficie, filtro di maggioranza 3×3, volumi lineari; per le infestanti irrorazione localizzata (celle sotto soglia non trattate). Esce un ISOXML a griglia vero | `um/demo.py` |
+| Banca dati etichette | 8 prodotti inventati (nomi fittizi, n. registrazione DEMO-…) con principi attivi, dosi, volumi, intervallo di sicurezza, prezzo, efficacia di base e incompatibilità di miscela | `static/data/demo_etichette.json`, selettore nella fase 2 |
+| Modello di efficacia | efficacia attesa simulata e dichiarata: efficacia di base × risposta alla dose (rispetto alla dose necessaria della zona) × copertura; ± 5 punti. Calcolata sul ricettario e sui volumi che l'hardware eroga davvero (senza rateo variabile: un volume unico) | `um/recipes.py` (`efficacy`) |
+| Sensori e sezioni di barra | catalogo esteso con sensori (pressione, velocità radar, livello, vento) e gruppi di valvole di sezione (codici DEMO-…), sezioni gestibili dai terminali; il requisito «sezioni» confronta le sezioni con la risoluzione delle zone, il sensore di pressione è un requisito consigliato | `static/data/demo_catalog.json`, `um/hardware.py` (`merge_demo`), `um/matching.py` |
+| Shapefile e UTM | lettura reale (non simulata) di shapefile poligonali zippati e conversione UTM WGS84/ETRS89 → WGS84, anche per GeoJSON | `um/shapefile.py` |
+
+Esiti verificati sui 4 campi con la configurazione suggerita: il ricettario A (aderente alla mappa) ha l'efficacia simulata più alta, B usa meno prodotto, C (rateo unico) rende meno; sul mais la compatibilità parte «parziale» (3 sezioni per zone da 6 m su barra da 24 m) e la proposta del gruppo valvole a 5 sezioni la porta ad «adeguata».
+
 ## Dati reali, dichiarati e dimostrativi
 
 | Dato | Natura |
 |---|---|
-| Geometrie, superfici, ratei della prescrizione | reali, dal file caricato (gli 8 esempi sono sintetici, dichiarati) |
-| Mappa NDVI di prova `static/data/esempio_ndvi.geojson` | **dimostrativa**, generata da `tools/make_geojson_example.py` |
+| Geometrie, superfici, ratei di un file caricato dall'utente | reali |
+| Gli 8 esempi ISOXML, la mappa NDVI di prova, i 4 campi dimostrativi | **simulati**, dichiarati |
 | Catalogo ARAG (119 prodotti) | dalle pagine pubbliche (`docs/RICERCA_MERCATO.md`), da verificare con ARAG |
-| Prodotti fitosanitari, n. di registrazione, dosi, volumi, prezzi | **dichiarati dal tecnico** con la fonte; l'app non ha un archivio |
-| Volumi di miscela da GeoJSON | regola lineare scelta dal tecnico |
-| Efficacia agronomica | **non stimata** (manca un modello validato): l'app mostra indicatori calcolati |
+| Sensori e valvole di sezione DEMO-…, sezioni dei terminali | **simulati** |
+| Prodotti fitosanitari | dal tecnico (con fonte) oppure dalla banca dati **dimostrativa** |
+| Efficacia attesa | **simulata** con modello dichiarato |
 | Dichiarazioni dell'operatore | riportate come dichiarazioni, non verificate |
 
 ## Verifiche eseguite
 
-- 70 test automatici (49 preesistenti + 21 nuovi in `tests/test_pipeline.py`), verdi su Python 3.9, 3.11 e 3.13.
-- Percorso completo nel browser a 1440 e 375 px: esempio 01 → zone → dati di etichetta → ricettari → scelta → hardware adeguato → hardware senza regolazione (insufficiente) → proposta ARAG applicata (adeguata) → documento da completare → dichiarazioni → validato → JSON e ISOXML scaricati → cambio al ricettario A non conforme → validazione annullata e bloccata con il motivo.
-- Tutti gli 8 esempi attraversano le fasi 1–6 senza errori JS né scorrimento orizzontale (375 e 1280 px).
-- Import GeoJSON dall'interfaccia, rifiuto di coordinate proiettate e sistemi di riferimento diversi da WGS84.
+- 78 test automatici (49 preesistenti + 29 della pipeline e della modalità dimostrativa), verdi su Python 3.9, 3.11 e 3.13.
+- Percorso ISOXML completo nel browser (1440 e 375 px) e tutti gli 8 esempi attraverso le fasi 1–6.
+- Percorso dimostrativo sui 4 campi: galleria → acquisizione (drone/Sentinel-2, ricerca scene) → zone → banca dati → ricettari → hardware → proposte ARAG applicate → documento validato con avviso DEMO; anche a 375 px. Nessun errore JS, nessuno scorrimento orizzontale.
 
-## Integrazioni ancora necessarie
+## Integrazioni reali ancora da collegare (oggi simulate)
 
-1. **Acquisizione satellitare diretta**: serve un fornitore con licenza commerciale, account e chiave (`um/satellite.py` descrive l'interfaccia; la chiave va in una variabile d'ambiente). Oggi si caricano file GeoJSON esportati dalle piattaforme.
-2. **Banca dati delle etichette**: per precompilare dosi e autorizzazioni da fonte ufficiale (es. Ministero della Salute) serve un servizio o un'esportazione aggiornata con condizioni d'uso compatibili. Oggi i dati sono inseriti dal tecnico con la fonte.
-3. **Modello di efficacia agronomica**: necessario per stimare il risultato atteso; senza, l'app non lo dichiara.
-4. **Catalogo**: mancano sensori e sezioni di barra (le righe compaiono come «non verificabile»); la compatibilità IBX/ISOBUS va confermata con ARAG.
-5. **Shapefile e GeoTIFF**: non letti (richiederebbero librerie esterne; il progetto usa solo la libreria standard).
-6. **Disegno del perimetro sulla mappa**: non implementato; il perimetro viene dal file o è stimato (inviluppo convesso, dichiarato).
+1. Fornitore satellitare/drone con licenza commerciale: implementare `Provider.fetch_index` in `um/satellite.py`; la chiave in una variabile d'ambiente.
+2. Banca dati ufficiale delle etichette: sostituire `static/data/demo_etichette.json` con un servizio aggiornato (stesso formato dei campi).
+3. Modello agronomico validato al posto di `recipes.efficacy`.
+4. Codici e specifiche reali di sensori e valvole di sezione ARAG al posto di `static/data/demo_catalog.json`.
+5. Non implementati: lettura GeoTIFF, disegno del perimetro sulla mappa, PDF generato dal server (si usa la stampa del browser).
 
 ## Problemi residui noti
 

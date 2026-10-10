@@ -12,9 +12,13 @@ Dalla mappa del campo al trattamento documentato, in sei fasi: carichi la prescr
 
 Si apre il browser su `http://localhost:8765/`. Nella finestra nera compaiono anche gli indirizzi per gli amici.
 
+## Prova veloce (modalità dimostrativa)
+
+Nella pagina iniziale scegli uno dei 4 **campi dimostrativi** (vigneto, mais, frumento, pomodoro): vedi ortofoto, NDVI e, per il mais, la mappa delle infestanti; scegli l'acquisizione da drone o Sentinel-2 (puoi cercare altre scene) e avvia il processo. Nella fase Ricettari aggiungi un prodotto dalla **banca dati etichette DEMO**. Campi, immagini, prodotti, efficacia, sensori e valvole di sezione marcati DEMO sono **inventati ma verosimili** e servono a mostrare il funzionamento (dettagli in `docs/PIPELINE.md`).
+
 ## Come si usa
 
-1. **Mappa e zone**: trascina il `.zip`/`TASKDATA.XML` o una mappa indice `.geojson` (WGS84; scegli indice, numero di zone e i due volumi estremi), oppure prova un esempio. Vedi classi di intervento, variabilità e da dove arriva ogni dato.
+1. **Mappa e zone**: scegli un campo dimostrativo, oppure trascina il `.zip`/`TASKDATA.XML`, una mappa indice `.geojson` o uno shapefile zippato (WGS84 o UTM; scegli indice, numero di zone e i due volumi estremi), oppure prova un esempio ISOXML. Vedi classi di intervento, variabilità e da dove arriva ogni dato.
 2. **Ricettari**: inserisci i dati letti sull'etichetta autorizzata (n. registrazione, fonte, dosi, volumi, prezzo). L'app calcola tre proposte: **A** aderente alla prescrizione, **B** minimo prodotto entro etichetta, **C** rateo unico, con tabella di confronto.
 3. **Scelta**: scegli una proposta; la decisione e la nota entrano nel registro. La scelta non autorizza l'esecuzione.
 4. **Hardware**: indica ugelli, Flowtron, SELETRON, velocità… Il riquadro «Ricettario sull'hardware» confronta requisito per requisito (adeguata / parziale / insufficiente); mappa, indicatori e schede (Zone, Ugelli e portate, Meteo, Come si calcola) lavorano sui volumi del ricettario.
@@ -53,8 +57,9 @@ Il riepilogo sotto il nome del file mostra in ogni momento stato del trattamento
 ## Per sviluppatori
 
 - Solo libreria standard Python, nessuna dipendenza. `python3 app.py [--port=9000] [--local] [--no-browser]`; variabili `PORT`, `ULTIMO_METRO_HOST`, `NO_BROWSER`.
-- `python3 -m unittest discover -s tests -t .` (70 test: lettura ISOXML, idraulica, catene, specializzazione, server, sessioni, caricamenti ostili, zone, ricettari, compatibilità, proposte ARAG, documenti, GeoJSON).
+- `python3 -m unittest discover -s tests -t .` (78 test: lettura ISOXML, idraulica, catene, specializzazione, server, sessioni, caricamenti ostili, zone, ricettari, compatibilità, proposte ARAG, documenti, GeoJSON, shapefile/UTM, modalità dimostrativa).
+- `python3 tools/make_demo_fields.py` rigenera i campi dimostrativi (`static/demo/fields.json`).
 - `python3 tools/make_geojson_example.py` rigenera la mappa NDVI di prova (`static/data/esempio_ndvi.geojson`, dati sintetici).
 - `python3 tools/make_examples.py` rigenera gli 8 esempi in `examples/`.
 - Limiti: file 25 MB, 4 milioni di celle, 80 sessioni in memoria per 6 ore. XML con DTD/entità e ZIP con percorsi non sicuri vengono rifiutati.
-- Struttura: `um/isoxml.py` (lettura/scrittura), `um/hardware.py` (catalogo e catena), `um/engine.py` (idraulica, piano, specializzazione, suggerimenti), `um/zoning.py` (zone), `um/geoimport.py` (GeoJSON → ISOXML), `um/recipes.py` (ricettari), `um/matching.py` (compatibilità e proposte ARAG), `um/dossier.py` (documenti), `um/satellite.py` (punto di integrazione satellitare), `um/service.py` (sessioni, API), `um/server.py` (HTTP), `static/` (interfaccia: `pipeline.js` stato condiviso, un modulo per fase).
+- Struttura: `um/isoxml.py` (lettura/scrittura), `um/hardware.py` (catalogo e catena), `um/engine.py` (idraulica, piano, specializzazione, suggerimenti), `um/zoning.py` (zone), `um/geoimport.py` (GeoJSON → ISOXML), `um/recipes.py` (ricettari), `um/matching.py` (compatibilità e proposte ARAG), `um/dossier.py` (documenti), `um/satellite.py` (punto di integrazione satellitare), `um/demo.py` (campi e acquisizioni simulati), `um/shapefile.py` (shapefile e UTM), `um/service.py` (sessioni, API), `um/server.py` (HTTP), `static/` (interfaccia: `pipeline.js` stato condiviso, un modulo per fase).
