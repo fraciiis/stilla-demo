@@ -66,7 +66,7 @@ class Basics(ServerCase):
         self.assertIn("text/html", h["Content-Type"])
         self.assertIn(b"Ultimo Metro", body)
         self.assertIn("javascript", c.req("GET", "/js/main.js")[1]["Content-Type"])
-        self.assertEqual(c.req("GET", "/fonts/source-sans-3-latin-400-normal.woff2")[1]["Content-Type"], "font/woff2")
+        self.assertEqual(c.req("GET", "/fonts/inter-latin-400-normal.woff2")[1]["Content-Type"], "font/woff2")
         self.assertEqual(c.req("GET", "/data/arag_catalog.json")[0], 200)
 
     def test_no_external_resources_in_page(self):

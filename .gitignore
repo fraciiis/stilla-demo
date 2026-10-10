@@ -1,0 +1,3 @@
+# cache Python generate automaticamente
+__pycache__/
+*.py[cod]
